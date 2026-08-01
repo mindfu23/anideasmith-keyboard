@@ -13,6 +13,9 @@ SPDX-License-Identifier: Apache-2.0 AND GPL-3.0-only
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.WRITE_USER_DICTIONARY" />
     <uses-permission android:name="android.permission.READ_CONTACTS" />
+    <!-- only requested when the user enables built-in voice input; recognition itself runs in
+         a separate process (the system RecognitionService), so no INTERNET permission is needed -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
     <application android:label="@string/english_ime_name"
             android:name="helium314.keyboard.latin.App"
@@ -143,6 +146,12 @@ SPDX-License-Identifier: Apache-2.0 AND GPL-3.0-only
         <intent>
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+
+        <!-- To enumerate speech recognition services for built-in voice input.
+             Covered by the wildcard above, but kept explicit so the dependency is visible. -->
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
         </intent>
     </queries>
 </manifest>

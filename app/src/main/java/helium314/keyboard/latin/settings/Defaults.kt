@@ -132,6 +132,7 @@ object Defaults {
     const val PREF_USE_CONTACTS = false
     const val PREF_USE_APPS = false
     const val PREFS_LONG_PRESS_SYMBOLS_FOR_NUMPAD = false
+    const val PREF_USE_INLINE_VOICE_INPUT = false
     const val PREF_ONE_HANDED_MODE = false
     @SuppressLint("RtlHardcoded")
     const val PREF_ONE_HANDED_GRAVITY = Gravity.LEFT

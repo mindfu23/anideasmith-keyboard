@@ -1,15 +1,21 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package helium314.keyboard.settings.screens
 
+import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Context
 import android.os.Build
+import android.speech.SpeechRecognizer
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
@@ -23,6 +29,7 @@ import helium314.keyboard.latin.BuildConfig
 import helium314.keyboard.latin.R
 import helium314.keyboard.latin.SystemBroadcastReceiver
 import helium314.keyboard.latin.common.splitOnWhitespace
+import helium314.keyboard.latin.permissions.PermissionsUtil
 import helium314.keyboard.latin.settings.DebugSettings
 import helium314.keyboard.latin.settings.Defaults
 import helium314.keyboard.latin.settings.Settings
@@ -86,6 +93,7 @@ fun AdvancedSettingsScreen(
         if (BuildConfig.DEBUG || prefs.getBoolean(DebugSettings.PREF_SHOW_DEBUG_SETTINGS, Defaults.PREF_SHOW_DEBUG_SETTINGS))
             SettingsWithoutKey.DEBUG_SETTINGS else null,
         R.string.settings_category_experimental,
+        Settings.PREF_USE_INLINE_VOICE_INPUT,
         Settings.PREF_EMOJI_MAX_SDK,
         Settings.PREF_URL_DETECTION,
         if (BuildConfig.BUILD_TYPE != "nouserlib") SettingsWithoutKey.LOAD_GESTURE_LIB else null
@@ -235,6 +243,35 @@ fun createAdvancedSettings(context: Context) = listOf(
             name = it.title,
             onClick = { SettingsDestination.navigateTo(SettingsDestination.Debug) }
         ) { NextScreenIcon() }
+    },
+    Setting(context, Settings.PREF_USE_INLINE_VOICE_INPUT,
+        R.string.use_inline_voice_input, R.string.use_inline_voice_input_summary
+    ) { setting ->
+        // mirrors the READ_CONTACTS switch in TextCorrectionScreen: the permission is only ever
+        // requested from here, because an InputMethodService cannot show a permission dialog
+        val activity = LocalContext.current.getActivity() ?: return@Setting
+        var granted by remember {
+            mutableStateOf(PermissionsUtil.checkAllPermissionsGranted(activity, Manifest.permission.RECORD_AUDIO))
+        }
+        val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+            granted = it
+            if (granted)
+                activity.prefs().edit { putBoolean(setting.key, true) }
+            else
+                Toast.makeText(activity, R.string.voice_input_no_permission, Toast.LENGTH_LONG).show()
+        }
+        SwitchPreference(setting, Defaults.PREF_USE_INLINE_VOICE_INPUT,
+            allowCheckedChange = {
+                if (!it) true
+                else if (!SpeechRecognizer.isRecognitionAvailable(activity)) {
+                    Toast.makeText(activity, R.string.voice_input_not_available, Toast.LENGTH_LONG).show()
+                    false
+                } else if (!granted) {
+                    launcher.launch(Manifest.permission.RECORD_AUDIO)
+                    false
+                } else true
+            }
+        )
     },
     Setting(context, Settings.PREF_EMOJI_MAX_SDK, R.string.prefs_key_emoji_max_sdk) { setting ->
         val ctx = LocalContext.current

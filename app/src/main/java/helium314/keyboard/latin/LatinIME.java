@@ -6,6 +6,7 @@
 
 package helium314.keyboard.latin;
 
+import android.Manifest;
 import android.annotation.SuppressLint;
 import android.app.AlertDialog;
 import android.content.BroadcastReceiver;
@@ -22,6 +23,7 @@ import android.os.Bundle;
 import android.os.Debug;
 import android.os.Message;
 import android.os.Process;
+import android.speech.SpeechRecognizer;
 import android.util.PrintWriterPrinter;
 import android.util.Printer;
 import android.view.KeyEvent;
@@ -33,6 +35,7 @@ import android.view.inputmethod.InlineSuggestion;
 import android.view.inputmethod.InlineSuggestionsRequest;
 import android.view.inputmethod.InlineSuggestionsResponse;
 import android.view.inputmethod.InputMethodSubtype;
+import android.widget.Toast;
 
 import helium314.keyboard.accessibility.AccessibilityUtils;
 import helium314.keyboard.compat.ConfigurationCompatKt;
@@ -64,6 +67,8 @@ import helium314.keyboard.latin.common.ViewOutlineProviderUtilsKt;
 import helium314.keyboard.latin.define.DebugFlags;
 import helium314.keyboard.latin.inputlogic.InputLogic;
 import helium314.keyboard.latin.personalization.PersonalizationHelper;
+import helium314.keyboard.latin.permissions.PermissionsUtil;
+import helium314.keyboard.latin.voice.VoiceInputController;
 import helium314.keyboard.latin.settings.Settings;
 import helium314.keyboard.latin.settings.SettingsValues;
 import helium314.keyboard.latin.suggestions.SuggestionStripView;
@@ -135,6 +140,8 @@ public class LatinIME extends InputMethodService implements
             DictionaryFacilitatorProvider.getDictionaryFacilitator(false);
     private final DictionaryFacilitator mOriginalDictionaryFacilitator = mDictionaryFacilitator;
     final InputLogic mInputLogic = new InputLogic(this, this, mDictionaryFacilitator);
+    // created on first use, so the recognizer is never bound unless the user enables the feature
+    @Nullable private VoiceInputController mVoiceInputController;
 
     // TODO: Move these {@link View}s to {@link KeyboardSwitcher}.
     private View mInputView;
@@ -692,6 +699,11 @@ public class LatinIME extends InputMethodService implements
 
     @Override
     public void onDestroy() {
+        // a leaked recognizer keeps the service binding and the mic indicator alive
+        if (mVoiceInputController != null) {
+            mVoiceInputController.release();
+            mVoiceInputController = null;
+        }
         mClipboardHistoryManager.onDestroy();
         mDictionaryFacilitator.closeDictionaries();
         mSettings.onDestroy();
@@ -1015,6 +1027,7 @@ public class LatinIME extends InputMethodService implements
     public void onWindowHidden() {
         super.onWindowHidden();
         Log.i(TAG, "onWindowHidden");
+        cancelVoiceInput();
         final MainKeyboardView mainKeyboardView = mKeyboardSwitcher.getMainKeyboardView();
         if (mainKeyboardView != null) {
             mainKeyboardView.closing();
@@ -1025,6 +1038,7 @@ public class LatinIME extends InputMethodService implements
     void onFinishInputInternal() {
         super.onFinishInput();
         Log.i(TAG, "onFinishInput");
+        cancelVoiceInput();
 
         mDictionaryFacilitator.onFinishInput();
         final MainKeyboardView mainKeyboardView = mKeyboardSwitcher.getMainKeyboardView();
@@ -1036,6 +1050,7 @@ public class LatinIME extends InputMethodService implements
     void onFinishInputViewInternal(final boolean finishingInput) {
         super.onFinishInputView(finishingInput);
         Log.i(TAG, "onFinishInputView");
+        cancelVoiceInput();
         cleanupInternalStateForFinishInput();
     }
 
@@ -1057,6 +1072,11 @@ public class LatinIME extends InputMethodService implements
                                   final int composingSpanStart, final int composingSpanEnd) {
         super.onUpdateSelection(oldSelStart, oldSelEnd, newSelStart, newSelEnd,
                 composingSpanStart, composingSpanEnd);
+        // the cursor moved from somewhere other than dictation — dictating into it would put the
+        // text somewhere the user is not looking. Phase 3 must revisit this once we write text.
+        if (oldSelStart != newSelStart || oldSelEnd != newSelEnd) {
+            cancelVoiceInput();
+        }
         if (DebugFlags.DEBUG_ENABLED) {
             Log.i(TAG, "onUpdateSelection: oss=" + oldSelStart + ", ose=" + oldSelEnd
                     + ", nss=" + newSelStart + ", nse=" + newSelEnd
@@ -1412,7 +1432,12 @@ public class LatinIME extends InputMethodService implements
     // completely replace #onCodeInput.
     public void onEvent(@NonNull final Event event) {
         if (KeyCode.VOICE_INPUT == event.getKeyCode()) {
-            mRichImm.switchToShortcutIme(this);
+            if (!onVoiceInputKey()) {
+                mRichImm.switchToShortcutIme(this);
+            }
+        } else {
+            // any other key ends dictation, and is then handled as normal input
+            cancelVoiceInput();
         }
         final InputTransaction completeInputTransaction =
                 mInputLogic.onCodeInput(mSettings.getCurrent(), event,
@@ -1421,6 +1446,80 @@ public class LatinIME extends InputMethodService implements
         updateStateAfterInputTransaction(completeInputTransaction);
         mKeyboardSwitcher.onEvent(event, getCurrentAutoCapsState(), getCurrentRecapitalizeState());
     }
+
+    /**
+     * Handles a press of the microphone key when built-in voice input is enabled.
+     *
+     * @return true if dictation took over the key, false to fall through to the existing
+     *         switch to another voice input method — that path stays unchanged.
+     */
+    private boolean onVoiceInputKey() {
+        if (!mSettings.getCurrent().mUseInlineVoiceInput) return false;
+        if (mVoiceInputController != null && mVoiceInputController.isActive()) {
+            mVoiceInputController.stop(); // the mic key toggles; it is the gesture users reach for
+            return true;
+        }
+        if (!PermissionsUtil.checkAllPermissionsGranted(this, Manifest.permission.RECORD_AUDIO)) {
+            // an IME cannot ask for a permission, so this is as far as we can go from here
+            showVoiceInputToast(R.string.voice_input_no_permission);
+            return false;
+        }
+        if (!SpeechRecognizer.isRecognitionAvailable(this)) {
+            showVoiceInputToast(R.string.voice_input_not_available);
+            return false;
+        }
+        if (mVoiceInputController == null) {
+            mVoiceInputController = new VoiceInputController(this, mVoiceInputListener);
+        }
+        // TODO(phase 6): preferOffline becomes a setting
+        mVoiceInputController.start(mRichImm.getCurrentSubtypeLocale(), true);
+        return true;
+    }
+
+    private void cancelVoiceInput() {
+        if (mVoiceInputController != null && mVoiceInputController.isActive()) {
+            mVoiceInputController.cancel();
+        }
+    }
+
+    private void showVoiceInputToast(final int resId) {
+        Toast.makeText(this, resId, Toast.LENGTH_LONG).show();
+    }
+
+    // Phase 2 is deliberately log-only: nothing is written to the input connection yet, because
+    // that is where InputLogic / WordComposer state can be corrupted. See NOTES.md.
+    private final VoiceInputController.Listener mVoiceInputListener = new VoiceInputController.Listener() {
+        @Override
+        public void onVoiceInputStarted() {
+            Log.i(TAG, "voice input started");
+        }
+
+        @Override
+        public void onVoiceInputPartial(@NonNull final String text) {
+            Log.i(TAG, "voice partial: " + text);
+        }
+
+        @Override
+        public void onVoiceInputFinal(@NonNull final String text) {
+            Log.i(TAG, "voice final: " + text);
+        }
+
+        @Override
+        public void onVoiceInputRms(final float rmsDb) {
+            // the Gate 2 instrument — a flat value here means no audio is reaching the recognizer
+            Log.i(TAG, "voice rms: " + rmsDb);
+        }
+
+        @Override
+        public void onVoiceInputError(final int error) {
+            Log.w(TAG, "voice error: " + VoiceInputController.Companion.errorName(error));
+        }
+
+        @Override
+        public void onVoiceInputStopped() {
+            Log.i(TAG, "voice input stopped");
+        }
+    };
 
     public void onTextInput(@Nullable String rawText) {
         if (rawText == null) return;

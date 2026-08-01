@@ -125,6 +125,7 @@ public class SettingsValues {
     public final float mKeyboardHeightScale;
     public final float mBottomRowScale;
     public final boolean mUrlDetectionEnabled;
+    public final boolean mUseInlineVoiceInput;
     public final float mBottomPaddingScale;
     public final float mSidePaddingScale;
     public final ToolbarMode mToolbarMode;
@@ -218,6 +219,7 @@ public class SettingsValues {
                 && inputAttributes.mIsGeneralTextInput;
         mBlockPotentiallyOffensive = prefs.getBoolean(Settings.PREF_BLOCK_POTENTIALLY_OFFENSIVE, Defaults.PREF_BLOCK_POTENTIALLY_OFFENSIVE);
         mUrlDetectionEnabled = prefs.getBoolean(Settings.PREF_URL_DETECTION, Defaults.PREF_URL_DETECTION);
+        mUseInlineVoiceInput = prefs.getBoolean(Settings.PREF_USE_INLINE_VOICE_INPUT, Defaults.PREF_USE_INLINE_VOICE_INPUT);
         mAutoCorrectionEnabledPerUserSettings = prefs.getBoolean(Settings.PREF_AUTO_CORRECTION, Defaults.PREF_AUTO_CORRECTION);
         mAutoCorrectEnabled = mAutoCorrectionEnabledPerUserSettings
                 && (mInputAttributes.mInputTypeShouldAutoCorrect || prefs.getBoolean(Settings.PREF_MORE_AUTO_CORRECTION, Defaults.PREF_MORE_AUTO_CORRECTION))

@@ -1,5 +1,14 @@
 import com.android.build.api.variant.ApplicationVariant
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import java.util.Properties
+
+// LOCAL-ONLY: personal signing config, read from a properties file kept outside the repo.
+// Absent on any machine but the author's, in which case the "personal" build type is
+// simply unsigned. This whole block is dropped before any upstream PR.
+val personalKeystoreProperties = Properties().apply {
+    val f = rootProject.file("../signing/keystore.properties")
+    if (f.exists()) f.inputStream().use { load(it) }
+}
 
 plugins {
     id("com.android.application")
@@ -22,6 +31,18 @@ android {
             abiFilters.addAll(listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64"))
         }
         proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+    }
+
+    // LOCAL-ONLY: see note at top of file.
+    signingConfigs {
+        if (personalKeystoreProperties.getProperty("storeFile") != null) {
+            create("personal") {
+                storeFile = file(personalKeystoreProperties.getProperty("storeFile"))
+                storePassword = personalKeystoreProperties.getProperty("storePassword")
+                keyAlias = personalKeystoreProperties.getProperty("keyAlias")
+                keyPassword = personalKeystoreProperties.getProperty("keyPassword")
+            }
+        }
     }
 
     buildTypes {
@@ -47,6 +68,14 @@ android {
         create("runTests") { // build variant for running tests on CI that skips tests known to fail
             isMinifyEnabled = false
             isJniDebuggable = false
+        }
+        // LOCAL-ONLY: daily-driver build. Same as release, but signed with a personal key and
+        // installed under a distinct application id so it coexists with the F-Droid build.
+        create("personal") {
+            initWith(getByName("release"))
+            matchingFallbacks += listOf("release")
+            applicationIdSuffix = ".personal"
+            signingConfigs.findByName("personal")?.let { signingConfig = it }
         }
         create("debugNoMinify") { // for faster builds in IDE
             isDebuggable = true

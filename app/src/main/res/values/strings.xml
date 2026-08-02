@@ -994,6 +994,10 @@ New dictionary:
     <string name="voice_input_language_unavailable">Speech recognition is not available for this language</string>
     <!-- Message shown when the user tries to dictate into a password field -->
     <string name="voice_input_not_in_password_field">Voice input is disabled in password fields</string>
+    <!-- Shown in place of the suggestions while dictation is running -->
+    <string name="voice_input_listening">Listening…</string>
+    <!-- Description of the button that ends dictation -->
+    <string name="voice_input_stop">Stop dictation</string>
 
 
     <!-- gesture data gathering, new strings for normal use should go above -->

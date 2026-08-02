@@ -221,6 +221,9 @@ class VoiceInputController(private val context: Context, private val listener: L
                 return
             }
             listener.onVoiceInputError(error)
+            // every terminal path ends with onVoiceInputStopped, so the IME has exactly one place
+            // to close the composing span
+            listener.onVoiceInputStopped()
         }
 
         override fun onResults(results: Bundle?) {

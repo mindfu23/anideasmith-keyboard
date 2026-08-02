@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    SPDX-License-Identifier: GPL-3.0-only
+
+    LOCAL-ONLY. See clip_provider.xml in this directory. Mirrors app/src/debug/.
+-->
+<resources>
+    <string name="gesture_data_provider_authority" translatable="false">helium314.keyboard.personal.provider</string>
+</resources>

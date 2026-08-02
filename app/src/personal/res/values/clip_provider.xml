@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    SPDX-License-Identifier: GPL-3.0-only
+
+    LOCAL-ONLY. Content provider authorities are unique device-wide, so this must match the
+    suffixed applicationId or the personal build cannot be installed next to a release build
+    (INSTALL_FAILED_CONFLICTING_PROVIDER). Mirrors app/src/debug/. Not for upstream.
+-->
+<resources>
+    <string name="clipboard_provider_authority" translatable="false">helium314.keyboard.personal.clipprovider</string>
+</resources>

@@ -5,6 +5,8 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.speech.RecognitionListener
 import android.speech.RecognitionService
 import android.speech.RecognitionSupport
@@ -40,7 +42,10 @@ class VoiceInputController(private val context: Context, private val listener: L
 
     private var recognizer: SpeechRecognizer? = null
 
-    /** True between [start] and the terminal callback for that session. */
+    /**
+     * True while the user wants dictation, across utterances — not merely while the recognizer is
+     * listening. Cleared by [stop] and [cancel], which is what ends the restart loop.
+     */
     var isActive = false
         private set
 
@@ -56,8 +61,20 @@ class VoiceInputController(private val context: Context, private val listener: L
     /** Kept so the retry can rebuild the same request against the general recognizer. */
     private var currentLocale: Locale? = null
 
+    /** Kept so a restart can reissue the same request without rebuilding it. */
+    private var currentIntent: Intent? = null
+
+    /**
+     * Consecutive restarts that produced no speech. Reset by any result. Caps the restart loop so
+     * a broken engine cannot hold the microphone open forever.
+     */
+    private var consecutiveErrors = 0
+
+    private val handler = Handler(Looper.getMainLooper())
+
     fun start(locale: Locale?, preferOffline: Boolean) {
         retriedOnline = false
+        consecutiveErrors = 0
         startInternal(locale, preferOffline)
     }
 
@@ -95,6 +112,7 @@ class VoiceInputController(private val context: Context, private val listener: L
         currentLocale = locale
 
         val intent = buildIntent(locale, preferOffline)
+        currentIntent = intent
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
             logRecognitionSupport(r, intent)
 
@@ -104,19 +122,45 @@ class VoiceInputController(private val context: Context, private val listener: L
         r.startListening(intent)
     }
 
+    /**
+     * Android's recognizer is single-utterance: it stops on a silence timeout. Continuous
+     * dictation is therefore a restart loop, with a backoff so a recognizer that errors
+     * immediately cannot spin the microphone.
+     *
+     * API 33's EXTRA_SEGMENTED_SESSION would avoid the loop, but only on 33+, so the loop has to
+     * exist regardless. Running both would double the paths through the trickiest part of this
+     * class for no user-visible gain, so this is the single implementation.
+     */
+    private fun restartListening() {
+        val r = recognizer ?: return
+        val intent = currentIntent ?: return
+        val delay = RESTART_BASE_DELAY_MS * consecutiveErrors
+        handler.postDelayed({
+            // stop() or cancel() may have landed while this was queued
+            if (isActive && !cancelling) {
+                Log.i(TAG, "restarting listening (consecutiveErrors=$consecutiveErrors)")
+                r.startListening(intent)
+            }
+        }, delay.toLong())
+    }
+
     /** Stop listening but keep whatever has been recognised — final results still arrive. */
     fun stop() {
         if (!isActive) return
         Log.i(TAG, "stop()")
+        // clearing isActive ends the restart loop; the in-flight utterance still reports
+        isActive = false
+        handler.removeCallbacksAndMessages(null)
         recognizer?.stopListening()
     }
 
     /** Abandon the session. No further results are reported. */
     fun cancel() {
-        if (!isActive) return
+        if (!isActive && recognizer == null) return
         Log.i(TAG, "cancel()")
         cancelling = true
         isActive = false
+        handler.removeCallbacksAndMessages(null)
         recognizer?.cancel()
         release()
         listener.onVoiceInputStopped()
@@ -127,8 +171,10 @@ class VoiceInputController(private val context: Context, private val listener: L
      * microphone indicator lit, so this must run from the IME's onDestroy too.
      */
     fun release() {
+        handler.removeCallbacksAndMessages(null)
         recognizer?.destroy()
         recognizer = null
+        currentIntent = null
         isActive = false
     }
 
@@ -207,12 +253,22 @@ class VoiceInputController(private val context: Context, private val listener: L
         override fun onError(error: Int) {
             Log.w(TAG, "onError ${errorName(error)}")
             if (cancelling) return
+
+            // A pause between sentences ends the utterance rather than the dictation. Listen
+            // again, up to a cap, so silence eventually stops the microphone by itself.
+            if (isActive && isRestartable(error) && consecutiveErrors < MAX_CONSECUTIVE_ERRORS) {
+                consecutiveErrors++
+                restartListening()
+                return
+            }
+
+            val wasActive = isActive
             isActive = false
             release()
             // isOnDeviceRecognitionAvailable() reports true whenever the engine exists, even with
             // no downloaded model, so the on-device recognizer can only ever fail here. Fall back
             // to the general one once rather than leaving the user with a mic that does nothing.
-            if (usingOnDevice && !retriedOnline
+            if (wasActive && usingOnDevice && !retriedOnline
                     && (error == SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE
                         || error == SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED)) {
                 Log.i(TAG, "on-device recognition unavailable for the language, retrying online")
@@ -230,10 +286,14 @@ class VoiceInputController(private val context: Context, private val listener: L
             val text = firstResult(results)
             Log.i(TAG, "onResults, ${text?.length ?: -1} chars")
             if (cancelling) return
-            isActive = false
-            release()
+            consecutiveErrors = 0 // the engine is working; any earlier silence is forgiven
             if (text != null) listener.onVoiceInputFinal(text)
-            listener.onVoiceInputStopped()
+            if (isActive) {
+                restartListening() // keep dictating until the user stops
+            } else {
+                release()
+                listener.onVoiceInputStopped()
+            }
         }
 
         override fun onPartialResults(partialResults: Bundle?) {
@@ -251,6 +311,16 @@ class VoiceInputController(private val context: Context, private val listener: L
 
     companion object {
         private val TAG = VoiceInputController::class.simpleName
+
+        /** Utterances that produced no speech before dictation gives up on its own. */
+        private const val MAX_CONSECUTIVE_ERRORS = 3
+
+        /** Multiplied by the consecutive error count, so a failing engine backs off. */
+        private const val RESTART_BASE_DELAY_MS = 250
+
+        /** Errors that mean "this utterance had nothing in it", not "dictation is over". */
+        private fun isRestartable(error: Int) =
+            error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT
 
         fun errorName(error: Int) = when (error) {
             SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "ERROR_NETWORK_TIMEOUT"

@@ -69,6 +69,7 @@ import helium314.keyboard.latin.inputlogic.InputLogic;
 import helium314.keyboard.latin.personalization.PersonalizationHelper;
 import helium314.keyboard.latin.permissions.PermissionsUtil;
 import helium314.keyboard.latin.voice.VoiceInputController;
+import helium314.keyboard.latin.voice.VoiceInputStrip;
 import helium314.keyboard.latin.settings.Settings;
 import helium314.keyboard.latin.settings.SettingsValues;
 import helium314.keyboard.latin.suggestions.SuggestionStripView;
@@ -144,6 +145,8 @@ public class LatinIME extends InputMethodService implements
     @Nullable private VoiceInputController mVoiceInputController;
     // true while a dictation composing span of ours is on screen
     private boolean mVoiceInputComposing = false;
+    // the "Listening…" row shown in place of the suggestions, non-null only while dictating
+    @Nullable private VoiceInputStrip mVoiceInputStrip;
 
     // TODO: Move these {@link View}s to {@link KeyboardSwitcher}.
     private View mInputView;
@@ -1522,6 +1525,7 @@ public class LatinIME extends InputMethodService implements
         @Override
         public void onVoiceInputStarted() {
             Log.i(TAG, "voice input started");
+            showVoiceInputStrip();
         }
 
         @Override
@@ -1551,8 +1555,13 @@ public class LatinIME extends InputMethodService implements
 
         @Override
         public void onVoiceInputRms(final float rmsDb) {
-            // the Gate 2 instrument — a flat value here means no audio is reaching the recognizer
-            Log.i(TAG, "voice rms: " + rmsDb);
+            if (DebugFlags.DEBUG_ENABLED) {
+                // a flat value here means no audio is reaching the recognizer
+                Log.i(TAG, "voice rms: " + rmsDb);
+            }
+            if (mVoiceInputStrip != null) {
+                mVoiceInputStrip.onRms(rmsDb);
+            }
         }
 
         @Override
@@ -1581,8 +1590,24 @@ public class LatinIME extends InputMethodService implements
         public void onVoiceInputStopped() {
             Log.i(TAG, "voice input stopped");
             finishVoiceComposing();
+            hideVoiceInputStrip();
         }
     };
+
+    private void showVoiceInputStrip() {
+        if (!hasSuggestionStripView()) return;
+        mVoiceInputStrip = VoiceInputStrip.Companion.create(this, mSuggestionStripView, () -> {
+            if (mVoiceInputController != null) mVoiceInputController.stop();
+            return Unit.INSTANCE;
+        });
+        mSuggestionStripView.setExternalSuggestionView(mVoiceInputStrip.getRoot(), false);
+    }
+
+    private void hideVoiceInputStrip() {
+        if (mVoiceInputStrip == null) return;
+        mVoiceInputStrip = null;
+        if (hasSuggestionStripView()) setNeutralSuggestionStrip();
+    }
 
     public void onTextInput(@Nullable String rawText) {
         if (rawText == null) return;

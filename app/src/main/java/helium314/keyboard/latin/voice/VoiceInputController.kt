@@ -47,7 +47,21 @@ class VoiceInputController(private val context: Context, private val listener: L
     /** Set while tearing down deliberately, so the resulting error callback is not reported. */
     private var cancelling = false
 
+    /** True when the running session was built with [SpeechRecognizer.createOnDeviceSpeechRecognizer]. */
+    private var usingOnDevice = false
+
+    /** Guards the one automatic retry, so a broken engine cannot loop. */
+    private var retriedOnline = false
+
+    /** Kept so the retry can rebuild the same request against the general recognizer. */
+    private var currentLocale: Locale? = null
+
     fun start(locale: Locale?, preferOffline: Boolean) {
+        retriedOnline = false
+        startInternal(locale, preferOffline)
+    }
+
+    private fun startInternal(locale: Locale?, preferOffline: Boolean) {
         if (isActive) {
             Log.i(TAG, "start() while already active, ignoring")
             return
@@ -77,6 +91,8 @@ class VoiceInputController(private val context: Context, private val listener: L
         Log.i(TAG, "created recognizer, onDevice=$onDevice")
         r.setRecognitionListener(recognitionListener)
         recognizer = r
+        usingOnDevice = onDevice
+        currentLocale = locale
 
         val intent = buildIntent(locale, preferOffline)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
@@ -193,6 +209,17 @@ class VoiceInputController(private val context: Context, private val listener: L
             if (cancelling) return
             isActive = false
             release()
+            // isOnDeviceRecognitionAvailable() reports true whenever the engine exists, even with
+            // no downloaded model, so the on-device recognizer can only ever fail here. Fall back
+            // to the general one once rather than leaving the user with a mic that does nothing.
+            if (usingOnDevice && !retriedOnline
+                    && (error == SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE
+                        || error == SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED)) {
+                Log.i(TAG, "on-device recognition unavailable for the language, retrying online")
+                retriedOnline = true
+                startInternal(currentLocale, false)
+                return
+            }
             listener.onVoiceInputError(error)
         }
 

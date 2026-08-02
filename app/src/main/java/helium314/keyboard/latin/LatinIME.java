@@ -1513,6 +1513,23 @@ public class LatinIME extends InputMethodService implements
         @Override
         public void onVoiceInputError(final int error) {
             Log.w(TAG, "voice error: " + VoiceInputController.Companion.errorName(error));
+            // Only the errors that mean "this cannot work as configured" are worth interrupting
+            // the user for. No match and speech timeout are ordinary and Phase 4 will restart on
+            // them. But a fallback must never be a silent no-op.
+            switch (error) {
+                case SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS:
+                    showVoiceInputToast(R.string.voice_input_no_permission);
+                    break;
+                case SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE:
+                case SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED:
+                    showVoiceInputToast(R.string.voice_input_language_unavailable);
+                    break;
+                case SpeechRecognizer.ERROR_CLIENT:
+                    showVoiceInputToast(R.string.voice_input_not_available);
+                    break;
+                default:
+                    break;
+            }
         }
 
         @Override

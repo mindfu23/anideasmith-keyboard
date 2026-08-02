@@ -142,6 +142,8 @@ public class LatinIME extends InputMethodService implements
     final InputLogic mInputLogic = new InputLogic(this, this, mDictionaryFacilitator);
     // created on first use, so the recognizer is never bound unless the user enables the feature
     @Nullable private VoiceInputController mVoiceInputController;
+    // true while a dictation composing span of ours is on screen
+    private boolean mVoiceInputComposing = false;
 
     // TODO: Move these {@link View}s to {@link KeyboardSwitcher}.
     private View mInputView;
@@ -1072,9 +1074,13 @@ public class LatinIME extends InputMethodService implements
                                   final int composingSpanStart, final int composingSpanEnd) {
         super.onUpdateSelection(oldSelStart, oldSelEnd, newSelStart, newSelEnd,
                 composingSpanStart, composingSpanEnd);
-        // the cursor moved from somewhere other than dictation — dictating into it would put the
-        // text somewhere the user is not looking. Phase 3 must revisit this once we write text.
-        if (oldSelStart != newSelStart || oldSelEnd != newSelEnd) {
+        // Our own dictation writes come back here as belated expected updates, and must not cancel
+        // the dictation that produced them. Only a move we did not cause means the user or the app
+        // went somewhere else, and dictating into that would put text where nobody is looking.
+        if (mVoiceInputController != null && mVoiceInputController.isActive()
+                && (oldSelStart != newSelStart || oldSelEnd != newSelEnd)
+                && !mInputLogic.mConnection.isBelatedExpectedUpdate(oldSelStart, newSelStart,
+                        oldSelEnd, newSelEnd, composingSpanStart, composingSpanEnd)) {
             cancelVoiceInput();
         }
         if (DebugFlags.DEBUG_ENABLED) {
@@ -1454,9 +1460,16 @@ public class LatinIME extends InputMethodService implements
      *         switch to another voice input method — that path stays unchanged.
      */
     private boolean onVoiceInputKey() {
-        if (!mSettings.getCurrent().mUseInlineVoiceInput) return false;
+        final SettingsValues settingsValues = mSettings.getCurrent();
+        if (!settingsValues.mUseInlineVoiceInput) return false;
         if (mVoiceInputController != null && mVoiceInputController.isActive()) {
             mVoiceInputController.stop(); // the mic key toggles; it is the gesture users reach for
+            return true;
+        }
+        if (settingsValues.mInputAttributes.mIsPasswordField) {
+            // deliberately does not fall through to the old path either: handing a password field
+            // to an external voice IME is exactly what we do not want to do
+            showVoiceInputToast(R.string.voice_input_not_in_password_field);
             return true;
         }
         if (!PermissionsUtil.checkAllPermissionsGranted(this, Manifest.permission.RECORD_AUDIO)) {
@@ -1471,9 +1484,25 @@ public class LatinIME extends InputMethodService implements
         if (mVoiceInputController == null) {
             mVoiceInputController = new VoiceInputController(this, mVoiceInputListener);
         }
+        // Settle the typing state before dictating. Otherwise a half-typed word stays in
+        // WordComposer while we own a composing span, and the two disagree about what is on
+        // screen. This is the same path the keyboard uses when it loses focus.
+        mHandler.cancelUpdateSuggestionStrip();
+        mInputLogic.finishInput();
+        setNeutralSuggestionStrip();
         // TODO(phase 6): preferOffline becomes a setting
         mVoiceInputController.start(mRichImm.getCurrentSubtypeLocale(), true);
         return true;
+    }
+
+    /**
+     * Ends our composing span, keeping whatever has been dictated so far. Never deletes it — a
+     * cancelled dictation still leaves the user the words they already said.
+     */
+    private void finishVoiceComposing() {
+        if (!mVoiceInputComposing) return;
+        mVoiceInputComposing = false;
+        mInputLogic.mConnection.finishComposingText();
     }
 
     private void cancelVoiceInput() {
@@ -1486,8 +1515,9 @@ public class LatinIME extends InputMethodService implements
         Toast.makeText(this, resId, Toast.LENGTH_LONG).show();
     }
 
-    // Phase 2 is deliberately log-only: nothing is written to the input connection yet, because
-    // that is where InputLogic / WordComposer state can be corrupted. See NOTES.md.
+    // Dictated text is written straight to the input connection and never through InputLogic, so
+    // it is not composed, not autocorrected and not learned. That last part also satisfies
+    // IME_FLAG_NO_PERSONALIZED_LEARNING for free.
     private final VoiceInputController.Listener mVoiceInputListener = new VoiceInputController.Listener() {
         @Override
         public void onVoiceInputStarted() {
@@ -1496,12 +1526,27 @@ public class LatinIME extends InputMethodService implements
 
         @Override
         public void onVoiceInputPartial(@NonNull final String text) {
-            Log.i(TAG, "voice partial: " + text);
+            if (text.isEmpty()) return;
+            mVoiceInputComposing = true;
+            // as a composing span, so the whole partial is replaced by the next one instead of
+            // being appended to, and so the app shows it as provisional
+            mInputLogic.mConnection.setComposingText(text, 1);
         }
 
         @Override
         public void onVoiceInputFinal(@NonNull final String text) {
-            Log.i(TAG, "voice final: " + text);
+            final RichInputConnection connection = mInputLogic.mConnection;
+            connection.beginBatchEdit();
+            if (!text.isEmpty()) {
+                connection.setComposingText(text, 1);
+            }
+            connection.finishComposingText();
+            mVoiceInputComposing = false;
+            // so the next utterance, or typing, does not run into this one
+            if (!text.isEmpty() && !text.endsWith(" ")) {
+                connection.commitText(" ", 1);
+            }
+            connection.endBatchEdit();
         }
 
         @Override
@@ -1535,6 +1580,7 @@ public class LatinIME extends InputMethodService implements
         @Override
         public void onVoiceInputStopped() {
             Log.i(TAG, "voice input stopped");
+            finishVoiceComposing();
         }
     };
 

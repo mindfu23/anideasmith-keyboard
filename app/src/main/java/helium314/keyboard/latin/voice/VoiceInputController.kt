@@ -70,6 +70,9 @@ class VoiceInputController(private val context: Context, private val listener: L
      */
     private var consecutiveErrors = 0
 
+    /** True from scheduling a restart until listening actually begins again. */
+    private var restartPending = false
+
     private val handler = Handler(Looper.getMainLooper())
 
     fun start(locale: Locale?, preferOffline: Boolean) {
@@ -132,14 +135,24 @@ class VoiceInputController(private val context: Context, private val listener: L
      * class for no user-visible gain, so this is the single implementation.
      */
     private fun restartListening() {
+        // The engine can report more than one final for a single utterance — saying a trailing
+        // "period" is enough to produce a second one. Restarting for each would race two
+        // startListening calls and the loser gets ERROR_RECOGNIZER_BUSY, which is terminal.
+        if (restartPending) {
+            Log.i(TAG, "restart already pending, ignoring")
+            return
+        }
         val r = recognizer ?: return
         val intent = currentIntent ?: return
         val delay = RESTART_BASE_DELAY_MS * consecutiveErrors
+        restartPending = true
         handler.postDelayed({
             // stop() or cancel() may have landed while this was queued
             if (isActive && !cancelling) {
                 Log.i(TAG, "restarting listening (consecutiveErrors=$consecutiveErrors)")
                 r.startListening(intent)
+            } else {
+                restartPending = false
             }
         }, delay.toLong())
     }
@@ -150,6 +163,7 @@ class VoiceInputController(private val context: Context, private val listener: L
         Log.i(TAG, "stop()")
         // clearing isActive ends the restart loop; the in-flight utterance still reports
         isActive = false
+        restartPending = false
         handler.removeCallbacksAndMessages(null)
         recognizer?.stopListening()
     }
@@ -160,6 +174,7 @@ class VoiceInputController(private val context: Context, private val listener: L
         Log.i(TAG, "cancel()")
         cancelling = true
         isActive = false
+        restartPending = false
         handler.removeCallbacksAndMessages(null)
         recognizer?.cancel()
         release()
@@ -171,6 +186,7 @@ class VoiceInputController(private val context: Context, private val listener: L
      * microphone indicator lit, so this must run from the IME's onDestroy too.
      */
     fun release() {
+        restartPending = false
         handler.removeCallbacksAndMessages(null)
         recognizer?.destroy()
         recognizer = null
@@ -231,6 +247,7 @@ class VoiceInputController(private val context: Context, private val listener: L
     private val recognitionListener = object : RecognitionListener {
         override fun onReadyForSpeech(params: Bundle?) {
             Log.i(TAG, "onReadyForSpeech")
+            restartPending = false // listening again, so a further restart is allowed
         }
 
         override fun onBeginningOfSpeech() {
@@ -252,6 +269,7 @@ class VoiceInputController(private val context: Context, private val listener: L
 
         override fun onError(error: Int) {
             Log.w(TAG, "onError ${errorName(error)}")
+            restartPending = false // this attempt is over either way
             if (cancelling) return
 
             // A pause between sentences ends the utterance rather than the dictation. Listen

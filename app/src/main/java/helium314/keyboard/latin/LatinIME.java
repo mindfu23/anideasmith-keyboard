@@ -1032,7 +1032,7 @@ public class LatinIME extends InputMethodService implements
     public void onWindowHidden() {
         super.onWindowHidden();
         Log.i(TAG, "onWindowHidden");
-        cancelVoiceInput();
+        cancelVoiceInput("window hidden");
         final MainKeyboardView mainKeyboardView = mKeyboardSwitcher.getMainKeyboardView();
         if (mainKeyboardView != null) {
             mainKeyboardView.closing();
@@ -1043,7 +1043,7 @@ public class LatinIME extends InputMethodService implements
     void onFinishInputInternal() {
         super.onFinishInput();
         Log.i(TAG, "onFinishInput");
-        cancelVoiceInput();
+        cancelVoiceInput("finish input");
 
         mDictionaryFacilitator.onFinishInput();
         final MainKeyboardView mainKeyboardView = mKeyboardSwitcher.getMainKeyboardView();
@@ -1055,7 +1055,7 @@ public class LatinIME extends InputMethodService implements
     void onFinishInputViewInternal(final boolean finishingInput) {
         super.onFinishInputView(finishingInput);
         Log.i(TAG, "onFinishInputView");
-        cancelVoiceInput();
+        cancelVoiceInput("finish input view");
         cleanupInternalStateForFinishInput();
     }
 
@@ -1084,7 +1084,7 @@ public class LatinIME extends InputMethodService implements
                 && (oldSelStart != newSelStart || oldSelEnd != newSelEnd)
                 && !mInputLogic.mConnection.isBelatedExpectedUpdate(oldSelStart, newSelStart,
                         oldSelEnd, newSelEnd, composingSpanStart, composingSpanEnd)) {
-            cancelVoiceInput();
+            cancelVoiceInput("external cursor move");
         }
         if (DebugFlags.DEBUG_ENABLED) {
             Log.i(TAG, "onUpdateSelection: oss=" + oldSelStart + ", ose=" + oldSelEnd
@@ -1446,7 +1446,7 @@ public class LatinIME extends InputMethodService implements
             }
         } else {
             // any other key ends dictation, and is then handled as normal input
-            cancelVoiceInput();
+            cancelVoiceInput("key press");
         }
         final InputTransaction completeInputTransaction =
                 mInputLogic.onCodeInput(mSettings.getCurrent(), event,
@@ -1508,8 +1508,9 @@ public class LatinIME extends InputMethodService implements
         mInputLogic.mConnection.finishComposingText();
     }
 
-    private void cancelVoiceInput() {
+    private void cancelVoiceInput(final String reason) {
         if (mVoiceInputController != null && mVoiceInputController.isActive()) {
+            Log.i(TAG, "cancelling voice input: " + reason);
             mVoiceInputController.cancel();
         }
     }

@@ -990,6 +990,8 @@ New dictionary:
     <string name="voice_input_no_permission">Microphone permission is required for built-in voice input</string>
     <!-- Message shown when no speech recognition service is available on the device -->
     <string name="voice_input_not_available">No speech recognition service available</string>
+    <!-- Message shown when the speech recognition service cannot handle the keyboard's language -->
+    <string name="voice_input_language_unavailable">Speech recognition is not available for this language</string>
 
 
     <!-- gesture data gathering, new strings for normal use should go above -->

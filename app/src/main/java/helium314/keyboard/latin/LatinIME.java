@@ -1601,6 +1601,10 @@ public class LatinIME extends InputMethodService implements
             return Unit.INSTANCE;
         });
         mSuggestionStripView.setExternalSuggestionView(mVoiceInputStrip.getRoot(), false);
+        // setExternalSuggestionView only collapses the toolbar when "auto hide toolbar" is on.
+        // With the toolbar expanded — which it is, since the mic key lives there — it covers the
+        // suggestions row our view was just added to, so dictation would show no UI at all.
+        mSuggestionStripView.setToolbarVisibility(false);
     }
 
     private void hideVoiceInputStrip() {

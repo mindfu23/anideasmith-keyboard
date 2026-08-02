@@ -1626,6 +1626,10 @@ public class LatinIME extends InputMethodService implements
     }
 
     public void onStartBatchInput() {
+        // Gesture typing does not go through onEvent, so the any-key-cancels rule there does not
+        // cover it. Without this, dictation could keep running while a gesture is committed and
+        // the two would interleave text in the same field.
+        cancelVoiceInput("gesture typing");
         mInputLogic.onStartBatchInput(mSettings.getCurrent(), mKeyboardSwitcher, mHandler);
         mGestureConsumer.onGestureStarted(mRichImm.getCurrentSubtypeLocale(), mKeyboardSwitcher.getKeyboard());
     }

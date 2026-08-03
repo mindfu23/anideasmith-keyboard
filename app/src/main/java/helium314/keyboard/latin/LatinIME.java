@@ -1535,12 +1535,16 @@ public class LatinIME extends InputMethodService implements
             mVoiceInputComposing = true;
             // as a composing span, so the whole partial is replaced by the next one instead of
             // being appended to, and so the app shows it as provisional
-            mInputLogic.mConnection.setComposingText(text, 1);
+            final boolean set = mInputLogic.mConnection.setComposingText(text, 1);
+            // never the text itself — that is the user's speech
+            Log.i(TAG, "voice partial: " + text.length() + " chars, connected="
+                    + mInputLogic.mConnection.isConnected() + ", set=" + set);
         }
 
         @Override
         public void onVoiceInputFinal(@NonNull final String text) {
             final RichInputConnection connection = mInputLogic.mConnection;
+            Log.i(TAG, "voice final: " + text.length() + " chars, connected=" + connection.isConnected());
             connection.beginBatchEdit();
             if (!text.isEmpty()) {
                 connection.setComposingText(text, 1);

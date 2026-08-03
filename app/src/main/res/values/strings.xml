@@ -998,6 +998,20 @@ New dictionary:
     <string name="voice_input_listening">Listening…</string>
     <!-- Description of the button that ends dictation -->
     <string name="voice_input_stop">Stop dictation</string>
+    <!-- Switch for engine-supplied punctuation and capitalisation while dictating -->
+    <string name="voice_input_auto_punctuation">Automatic punctuation</string>
+    <!-- Description for "voice_input_auto_punctuation" option. -->
+    <string name="voice_input_auto_punctuation_summary">Let the speech recognition service add punctuation and capitalisation</string>
+    <!-- Switch to prefer speech recognition that runs on the device -->
+    <string name="voice_input_prefer_offline">Prefer on-device recognition</string>
+    <!-- Description for "voice_input_prefer_offline" option. -->
+    <string name="voice_input_prefer_offline_summary">Recognise speech without a network connection, when a downloaded language is available</string>
+    <!-- Setting to choose which installed app performs speech recognition -->
+    <string name="voice_input_service">Speech recognition service</string>
+    <!-- List entry leaving the choice of speech recognition service to the system -->
+    <string name="voice_input_service_default">System default</string>
+    <!-- Message shown when dictation ended without recognising anything -->
+    <string name="voice_input_no_speech">No speech recognised</string>
 
 
     <!-- gesture data gathering, new strings for normal use should go above -->

@@ -3,8 +3,11 @@ package helium314.keyboard.settings.screens
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.content.ComponentName
 import android.content.Context
+import android.content.Intent
 import android.os.Build
+import android.speech.RecognitionService
 import android.speech.SpeechRecognizer
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -65,6 +68,7 @@ fun AdvancedSettingsScreen(
     val b = (LocalContext.current.getActivity() as? SettingsActivity)?.prefChanged?.collectAsState()
     if ((b?.value ?: 0) < 0)
         Log.v("irrelevant", "stupid way to trigger recomposition on preference change")
+    val inlineVoiceInput = prefs.getBoolean(Settings.PREF_USE_INLINE_VOICE_INPUT, Defaults.PREF_USE_INLINE_VOICE_INPUT)
     val items = listOf(
         Settings.PREF_ALWAYS_INCOGNITO_MODE,
         Settings.PREF_KEY_LONGPRESS_TIMEOUT,
@@ -94,6 +98,12 @@ fun AdvancedSettingsScreen(
             SettingsWithoutKey.DEBUG_SETTINGS else null,
         R.string.settings_category_experimental,
         Settings.PREF_USE_INLINE_VOICE_INPUT,
+        // only meaningful once the feature is on, and they would otherwise be four rows of
+        // settings for something that does nothing
+        if (inlineVoiceInput) Settings.PREF_VOICE_INPUT_AUTO_PUNCTUATION else null,
+        if (inlineVoiceInput && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
+            Settings.PREF_VOICE_INPUT_PREFER_OFFLINE else null,
+        if (inlineVoiceInput) Settings.PREF_VOICE_INPUT_SERVICE else null,
         Settings.PREF_EMOJI_MAX_SDK,
         Settings.PREF_URL_DETECTION,
         if (BuildConfig.BUILD_TYPE != "nouserlib") SettingsWithoutKey.LOAD_GESTURE_LIB else null
@@ -272,6 +282,30 @@ fun createAdvancedSettings(context: Context) = listOf(
                 } else true
             }
         )
+    },
+    Setting(context, Settings.PREF_VOICE_INPUT_AUTO_PUNCTUATION,
+        R.string.voice_input_auto_punctuation, R.string.voice_input_auto_punctuation_summary
+    ) {
+        SwitchPreference(it, Defaults.PREF_VOICE_INPUT_AUTO_PUNCTUATION)
+    },
+    Setting(context, Settings.PREF_VOICE_INPUT_PREFER_OFFLINE,
+        R.string.voice_input_prefer_offline, R.string.voice_input_prefer_offline_summary
+    ) {
+        SwitchPreference(it, Defaults.PREF_VOICE_INPUT_PREFER_OFFLINE)
+    },
+    Setting(context, Settings.PREF_VOICE_INPUT_SERVICE, R.string.voice_input_service) { setting ->
+        // Also addresses upstream #1547, which asks to choose the engine. An empty value means
+        // "whatever the system default is", so a user who never touches this is unaffected.
+        val ctx = LocalContext.current
+        val services = remember {
+            val pm = ctx.packageManager
+            listOf(ctx.getString(R.string.voice_input_service_default) to "") +
+                pm.queryIntentServices(Intent(RecognitionService.SERVICE_INTERFACE), 0).map { info ->
+                    val label = info.serviceInfo.applicationInfo.loadLabel(pm).toString()
+                    label to ComponentName(info.serviceInfo.packageName, info.serviceInfo.name).flattenToString()
+                }
+        }
+        ListPreference(setting, services, Defaults.PREF_VOICE_INPUT_SERVICE)
     },
     Setting(context, Settings.PREF_EMOJI_MAX_SDK, R.string.prefs_key_emoji_max_sdk) { setting ->
         val ctx = LocalContext.current

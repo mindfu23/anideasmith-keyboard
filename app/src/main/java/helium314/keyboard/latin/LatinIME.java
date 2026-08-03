@@ -145,6 +145,8 @@ public class LatinIME extends InputMethodService implements
     @Nullable private VoiceInputController mVoiceInputController;
     // true while a dictation composing span of ours is on screen
     private boolean mVoiceInputComposing = false;
+    // whether the current dictation session produced any text at all
+    private boolean mVoiceInputGotResults = false;
     // the "Listening…" row shown in place of the suggestions, non-null only while dictating
     @Nullable private VoiceInputStrip mVoiceInputStrip;
 
@@ -1493,8 +1495,11 @@ public class LatinIME extends InputMethodService implements
         mHandler.cancelUpdateSuggestionStrip();
         mInputLogic.finishInput();
         setNeutralSuggestionStrip();
-        // TODO(phase 6): preferOffline becomes a setting
-        mVoiceInputController.start(mRichImm.getCurrentSubtypeLocale(), true);
+        mVoiceInputGotResults = false;
+        mVoiceInputController.start(mRichImm.getCurrentSubtypeLocale(),
+                settingsValues.mVoiceInputPreferOffline,
+                settingsValues.mVoiceInputAutoPunctuation,
+                settingsValues.mVoiceInputService);
         return true;
     }
 
@@ -1545,6 +1550,7 @@ public class LatinIME extends InputMethodService implements
         public void onVoiceInputFinal(@NonNull final String text) {
             final RichInputConnection connection = mInputLogic.mConnection;
             Log.i(TAG, "voice final: " + text.length() + " chars, connected=" + connection.isConnected());
+            mVoiceInputGotResults = true;
             connection.beginBatchEdit();
             if (!text.isEmpty()) {
                 connection.setComposingText(text, 1);
@@ -1585,6 +1591,14 @@ public class LatinIME extends InputMethodService implements
                     break;
                 case SpeechRecognizer.ERROR_CLIENT:
                     showVoiceInputToast(R.string.voice_input_not_available);
+                    break;
+                case SpeechRecognizer.ERROR_NO_MATCH:
+                case SpeechRecognizer.ERROR_SPEECH_TIMEOUT:
+                    // Ordinary between sentences, and phase 4 restarts on it — but if the whole
+                    // session produced nothing, the user just watched a microphone open, listen and
+                    // do nothing. That is indistinguishable from a broken keyboard, and it is what
+                    // a wedged recognition engine actually looks like.
+                    if (!mVoiceInputGotResults) showVoiceInputToast(R.string.voice_input_no_speech);
                     break;
                 default:
                     break;

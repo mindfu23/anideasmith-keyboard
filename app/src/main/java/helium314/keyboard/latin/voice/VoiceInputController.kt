@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package helium314.keyboard.latin.voice
 
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.os.Build
@@ -61,6 +62,12 @@ class VoiceInputController(private val context: Context, private val listener: L
     /** Kept so the retry can rebuild the same request against the general recognizer. */
     private var currentLocale: Locale? = null
 
+    /** Punctuation and capitalisation from the engine (API 33+). */
+    private var autoPunctuation = true
+
+    /** Empty means "whatever the system has chosen"; otherwise a flattened ComponentName. */
+    private var serviceComponent: String? = null
+
     /** Kept so a restart can reissue the same request without rebuilding it. */
     private var currentIntent: Intent? = null
 
@@ -75,9 +82,11 @@ class VoiceInputController(private val context: Context, private val listener: L
 
     private val handler = Handler(Looper.getMainLooper())
 
-    fun start(locale: Locale?, preferOffline: Boolean) {
+    fun start(locale: Locale?, preferOffline: Boolean, autoPunctuation: Boolean, service: String?) {
         retriedOnline = false
         consecutiveErrors = 0
+        this.autoPunctuation = autoPunctuation
+        this.serviceComponent = service?.takeIf { it.isNotEmpty() }
         startInternal(locale, preferOffline)
     }
 
@@ -93,22 +102,28 @@ class VoiceInputController(private val context: Context, private val listener: L
         }
         logResolvedService()
 
+        // An explicitly chosen engine wins over the on-device preference: the on-device factory
+        // takes no component, so honouring both is not possible.
+        val chosen = serviceComponent?.let { ComponentName.unflattenFromString(it) }
         // createOnDeviceSpeechRecognizer exists from API 31, but isOnDeviceRecognitionAvailable
         // only from 33 — on 31/32 there is nothing to ask, so just try it.
-        val onDevice = preferOffline && when {
+        val onDevice = chosen == null && preferOffline && when {
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU -> SpeechRecognizer.isOnDeviceRecognitionAvailable(context)
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> true
             else -> false
         }
         val r = try {
-            if (onDevice) SpeechRecognizer.createOnDeviceSpeechRecognizer(context)
-            else SpeechRecognizer.createSpeechRecognizer(context)
+            when {
+                onDevice -> SpeechRecognizer.createOnDeviceSpeechRecognizer(context)
+                chosen != null -> SpeechRecognizer.createSpeechRecognizer(context, chosen)
+                else -> SpeechRecognizer.createSpeechRecognizer(context)
+            }
         } catch (e: Exception) {
             Log.e(TAG, "could not create recognizer (onDevice=$onDevice)", e)
             listener.onVoiceInputError(SpeechRecognizer.ERROR_CLIENT)
             return
         }
-        Log.i(TAG, "created recognizer, onDevice=$onDevice")
+        Log.i(TAG, "created recognizer, onDevice=$onDevice, service=${chosen?.flattenToShortString() ?: "system default"}")
         r.setRecognitionListener(recognitionListener)
         recognizer = r
         usingOnDevice = onDevice
@@ -205,7 +220,8 @@ class VoiceInputController(private val context: Context, private val listener: L
             putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, preferOffline)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 putExtra(RecognizerIntent.EXTRA_MASK_OFFENSIVE_WORDS, false)
-                putExtra(RecognizerIntent.EXTRA_ENABLE_FORMATTING, RecognizerIntent.FORMATTING_OPTIMIZE_QUALITY)
+                if (autoPunctuation)
+                    putExtra(RecognizerIntent.EXTRA_ENABLE_FORMATTING, RecognizerIntent.FORMATTING_OPTIMIZE_QUALITY)
             }
         }
 

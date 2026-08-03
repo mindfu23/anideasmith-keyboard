@@ -983,9 +983,9 @@ New dictionary:
     <!-- Description for toggling suggestions when using the spell checker -->
     <string name="spell_check_suggestions_summary">Show suggestions when selecting a word with red underline. Requires setting app as default spell checker.</string>
     <!-- Switch to use dictation without leaving the keyboard, instead of switching to another voice input method -->
-    <string name="use_inline_voice_input">Built-in voice input</string>
+    <string name="use_inline_voice_input">Keep keyboard visible</string>
     <!-- Description for "use_inline_voice_input" option. -->
-    <string name="use_inline_voice_input_summary">Dictate without hiding the keyboard, using the speech recognition service installed on this device. When off, the microphone key switches to another voice input method as before.</string>
+    <string name="use_inline_voice_input_summary">Keep keyboard visible when using speech to text.</string>
     <!-- Message shown when voice input cannot be started because microphone access was refused -->
     <string name="voice_input_no_permission">Microphone permission is required for built-in voice input</string>
     <!-- Message shown when no speech recognition service is available on the device -->

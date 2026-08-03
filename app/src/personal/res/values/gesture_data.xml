@@ -5,5 +5,5 @@
     LOCAL-ONLY. See clip_provider.xml in this directory. Mirrors app/src/debug/.
 -->
 <resources>
-    <string name="gesture_data_provider_authority" translatable="false">helium314.keyboard.personal.provider</string>
+    <string name="gesture_data_provider_authority" translatable="false">com.anideasmith.keyboard.provider</string>
 </resources>

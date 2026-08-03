@@ -6,5 +6,5 @@
     distinguishable from the F-Droid install in the system keyboard list. Not for upstream.
 -->
 <resources>
-    <string name="english_ime_name" translatable="false">HeliBoard Voice</string>
+    <string name="english_ime_name" translatable="false">AnIdeaSmith Keyboard</string>
 </resources>

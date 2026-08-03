@@ -74,7 +74,6 @@ android {
         create("personal") {
             initWith(getByName("release"))
             matchingFallbacks += listOf("release")
-            applicationIdSuffix = ".personal"
             signingConfigs.findByName("personal")?.let { signingConfig = it }
         }
         create("debugNoMinify") { // for faster builds in IDE
@@ -86,6 +85,11 @@ android {
         }
 
         androidComponents.onVariants { variant: ApplicationVariant ->
+            // LOCAL-ONLY: this build is its own app, not a differently-suffixed HeliBoard, so it
+            // gets its own application id rather than an applicationIdSuffix.
+            if (variant.buildType == "personal") {
+                variant.applicationId.set("com.anideasmith.keyboard")
+            }
             if (variant.buildType == "debug") {
                 // got a little too big for GitHub after some dependency upgrades, so we remove the largest dictionary
                 variant.androidResources.ignoreAssetsPatterns = listOf("main_ro.dict")

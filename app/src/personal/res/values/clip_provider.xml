@@ -7,5 +7,5 @@
     (INSTALL_FAILED_CONFLICTING_PROVIDER). Mirrors app/src/debug/. Not for upstream.
 -->
 <resources>
-    <string name="clipboard_provider_authority" translatable="false">helium314.keyboard.personal.clipprovider</string>
+    <string name="clipboard_provider_authority" translatable="false">com.anideasmith.keyboard.clipprovider</string>
 </resources>

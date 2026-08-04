@@ -2,6 +2,7 @@ import com.android.build.api.variant.ApplicationVariant
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import java.util.Properties
 
+
 // LOCAL-ONLY: personal signing config, read from a properties file kept outside the repo.
 // Absent on any machine but the author's, in which case the "personal" build type is
 // simply unsigned. This whole block is dropped before any upstream PR.
@@ -24,8 +25,11 @@ android {
         applicationId = "helium314.keyboard"
         minSdk = 21
         targetSdk = 36
-        versionCode = 4006
-        versionName = "4.0-dev1"
+        // LOCAL-ONLY: our own version line, ahead of upstream's. Bump when adding a toolbar key
+        // or shipping a build — checkVersionUpgrade compares BuildConfig.VERSION_CODE with the
+        // stored one and runs upgradeToolbarPrefs, which is how new keys reach existing installs.
+        versionCode = 4103
+        versionName = "4.0-anideasmith.3"
         ndk {
             abiFilters.clear()
             abiFilters.addAll(listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64"))

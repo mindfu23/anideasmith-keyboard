@@ -1010,6 +1010,10 @@ New dictionary:
     <string name="voice_input_service">Speech recognition service</string>
     <!-- List entry leaving the choice of speech recognition service to the system -->
     <string name="voice_input_service_default">System default</string>
+    <!-- Switch making the space bar wider at the expense of the keys beside it -->
+    <string name="wider_space_bar">Wider space bar</string>
+    <!-- Description for "wider_space_bar" option. -->
+    <string name="wider_space_bar_summary">About 15% wider, taking the space from the keys next to it</string>
     <!-- Section heading for the dictation options -->
     <string name="settings_category_dictation">Dictation settings</string>
     <!-- Switch for dictation that runs until stopped rather than ending after a silence -->

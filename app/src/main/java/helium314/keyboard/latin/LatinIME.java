@@ -1650,7 +1650,8 @@ public class LatinIME extends InputMethodService implements
         mSuggestionStripView.setExternalSuggestionView(mVoiceInputStrip.getRoot(), false);
         // the row above is transient - any suggestion update clears it - so the pinned voice key
         // carries the state for the rest of the session
-        mSuggestionStripView.setVoiceInputActive(true);
+        mSuggestionStripView.setVoiceInputActive(true,
+                mVoiceInputController != null && mVoiceInputController.getLongForm());
         // setExternalSuggestionView only collapses the toolbar when "auto hide toolbar" is on.
         // With the toolbar expanded — which it is, since the mic key lives there — it covers the
         // suggestions row our view was just added to, so dictation would show no UI at all.

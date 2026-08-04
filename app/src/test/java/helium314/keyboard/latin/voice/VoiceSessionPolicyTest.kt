@@ -55,7 +55,6 @@ class VoiceSessionPolicyTest {
 
     @Test fun fatalErrorsEndTheSession() {
         listOf(
-            SpeechRecognizer.ERROR_CLIENT,
             SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS,
             SpeechRecognizer.ERROR_RECOGNIZER_BUSY,
             SpeechRecognizer.ERROR_NETWORK,
@@ -98,6 +97,31 @@ class VoiceSessionPolicyTest {
         assertFalse(VoiceSessionPolicy.shouldRestartAfterResult(isActive = true, cancelling = true, restartPending = false))
     }
 
+    // --- restarting too fast after a result, i.e. the fast-talking stop ------------------------
+
+    @Test fun restartIsNeverImmediate() {
+        // a result resets the failure count, so without a floor the next startListening is posted
+        // with no delay and lands while the engine is still tearing down the last utterance,
+        // which it answers with ERROR_CLIENT
+        assertEquals(VoiceSessionPolicy.MIN_RESTART_DELAY_MS, VoiceSessionPolicy.restartDelayMs(0))
+        assertTrue(VoiceSessionPolicy.restartDelayMs(0) > 0)
+    }
+
+    @Test fun clientErrorIsTransientAndRetried() {
+        assertEquals(ErrorAction.RESTART, onError(SpeechRecognizer.ERROR_CLIENT))
+        assertEquals(ErrorAction.RESTART,
+            VoiceSessionPolicy.onError(SpeechRecognizer.ERROR_CLIENT, false, true, 0, false, false,
+                VoiceSessionPolicy.MAX_CONSECUTIVE_ERRORS, VoiceSessionPolicy.MAX_CLIENT_ERRORS - 1))
+    }
+
+    @Test fun aBrokenEngineStillGivesUp() {
+        // long-form lifts the silence cap, so client errors need their own ceiling or a dead
+        // engine would be retried forever
+        assertEquals(ErrorAction.TERMINAL,
+            VoiceSessionPolicy.onError(SpeechRecognizer.ERROR_CLIENT, false, true, 0, false, false,
+                VoiceSessionPolicy.NO_ERROR_CAP, VoiceSessionPolicy.MAX_CLIENT_ERRORS))
+    }
+
     // --- our own writes must not read as the user moving the caret -------------------------
 
     @Test fun echoesOfOurOwnWritesDoNotEndDictation() {
@@ -130,9 +154,8 @@ class VoiceSessionPolicyTest {
     // --- backoff -------------------------------------------------------------------------------
 
     @Test fun restartBacksOffAsFailuresAccumulate() {
-        assertEquals(0L, VoiceSessionPolicy.restartDelayMs(0))
-        assertEquals(VoiceSessionPolicy.RESTART_BASE_DELAY_MS.toLong(), VoiceSessionPolicy.restartDelayMs(1))
+        assertEquals(VoiceSessionPolicy.MIN_RESTART_DELAY_MS, VoiceSessionPolicy.restartDelayMs(0))
         assertTrue(VoiceSessionPolicy.restartDelayMs(2) > VoiceSessionPolicy.restartDelayMs(1))
-        assertEquals(0L, VoiceSessionPolicy.restartDelayMs(-1)) // never a negative delay
+        assertEquals(VoiceSessionPolicy.MIN_RESTART_DELAY_MS, VoiceSessionPolicy.restartDelayMs(-1)) // never negative
     }
 }

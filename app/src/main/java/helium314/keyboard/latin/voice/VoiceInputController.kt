@@ -81,6 +81,9 @@ class VoiceInputController(private val context: Context, private val listener: L
      */
     private var consecutiveErrors = 0
 
+    /** ERROR_CLIENT failures since the last result, capped separately from silence. */
+    private var clientErrors = 0
+
     /** True from scheduling a restart until listening actually begins again. */
     private var restartPending = false
 
@@ -92,6 +95,7 @@ class VoiceInputController(private val context: Context, private val listener: L
     ) {
         retriedOnline = false
         consecutiveErrors = 0
+        clientErrors = 0
         this.autoPunctuation = autoPunctuation
         this.serviceComponent = service?.takeIf { it.isNotEmpty() }
         this.longForm = longForm
@@ -302,12 +306,13 @@ class VoiceInputController(private val context: Context, private val listener: L
             restartPending = false // this attempt is over either way
             val action = VoiceSessionPolicy.onError(
                 error, cancelling, isActive, consecutiveErrors, usingOnDevice, retriedOnline,
-                if (longForm) VoiceSessionPolicy.NO_ERROR_CAP else VoiceSessionPolicy.MAX_CONSECUTIVE_ERRORS
+                if (longForm) VoiceSessionPolicy.NO_ERROR_CAP else VoiceSessionPolicy.MAX_CONSECUTIVE_ERRORS,
+                clientErrors
             )
             if (action == VoiceSessionPolicy.ErrorAction.IGNORE) return
             if (action == VoiceSessionPolicy.ErrorAction.RESTART) {
                 // A pause between sentences ends the utterance, not the dictation.
-                consecutiveErrors++
+                if (error == SpeechRecognizer.ERROR_CLIENT) clientErrors++ else consecutiveErrors++
                 restartListening()
                 return
             }
@@ -335,6 +340,7 @@ class VoiceInputController(private val context: Context, private val listener: L
             Log.i(TAG, "onResults, ${text?.length ?: -1} chars")
             if (cancelling) return
             consecutiveErrors = 0 // the engine is working; any earlier silence is forgiven
+            clientErrors = 0
             if (text != null) listener.onVoiceInputFinal(text)
             if (isActive) {
                 restartListening() // keep dictating until the user stops

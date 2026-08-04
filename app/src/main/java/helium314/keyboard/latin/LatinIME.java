@@ -1455,9 +1455,10 @@ public class LatinIME extends InputMethodService implements
                 mRichImm.switchToShortcutIme(this);
             }
         } else if (KeyCode.VOICE_INPUT_LONG_FORM == event.getKeyCode()) {
-            if (!onVoiceInputKey(true)) {
-                mRichImm.switchToShortcutIme(this);
-            }
+            // Deliberately no fallback to switchToShortcutIme: upstream gives the voice key no
+            // long-press action at all, so with this feature disabled a long-press must keep
+            // doing nothing rather than start switching input methods.
+            onVoiceInputKey(true);
         } else if (!keepsTypingDuringDictation()) {
             // any other key ends dictation, and is then handled as normal input
             cancelVoiceInput("key press");
@@ -1568,9 +1569,11 @@ public class LatinIME extends InputMethodService implements
             // being appended to, and so the app shows it as provisional
             mVoiceInputLastWrite = SystemClock.uptimeMillis();
             final boolean set = mInputLogic.mConnection.setComposingText(text, 1);
-            // never the text itself — that is the user's speech
-            Log.i(TAG, "voice partial: " + text.length() + " chars, connected="
-                    + mInputLogic.mConnection.isConnected() + ", set=" + set);
+            if (DebugFlags.DEBUG_ENABLED) {
+                // never the text itself — that is the user's speech
+                Log.i(TAG, "voice partial: " + text.length() + " chars, connected="
+                        + mInputLogic.mConnection.isConnected() + ", set=" + set);
+            }
         }
 
         @Override

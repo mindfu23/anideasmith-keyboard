@@ -344,6 +344,10 @@ class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int)
     }
 
     override fun onDetachedFromWindow() {
+        // the pulse holds a drawable belonging to this view; a rotation builds a new strip and
+        // the old animator would otherwise keep running against the discarded one
+        voicePulse?.cancel()
+        voicePulse = null
         super.onDetachedFromWindow()
         dismissMoreSuggestionsPanel()
     }

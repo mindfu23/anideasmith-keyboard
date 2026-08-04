@@ -37,6 +37,8 @@ import helium314.keyboard.latin.settings.DebugSettings
 import helium314.keyboard.latin.settings.Defaults
 import helium314.keyboard.latin.settings.Settings
 import helium314.keyboard.latin.utils.checkTimestampFormat
+import helium314.keyboard.latin.utils.ToolbarKey
+import helium314.keyboard.latin.utils.addPinnedKey
 import helium314.keyboard.latin.utils.prefs
 import helium314.keyboard.latin.utils.NextScreenIcon
 import helium314.keyboard.settings.SettingsContainer
@@ -294,8 +296,14 @@ fun createAdvancedSettings(context: Context) = listOf(
     },
     Setting(context, Settings.PREF_VOICE_INPUT_LONG_FORM,
         R.string.voice_input_long_form, R.string.voice_input_long_form_summary
-    ) {
-        SwitchPreference(it, Defaults.PREF_VOICE_INPUT_LONG_FORM)
+    ) { setting ->
+        val ctx = LocalContext.current
+        // Pin the key when the capability is switched on, so it is reachable straight away.
+        // Switching off does not unpin: the key is filtered out while unavailable, so the user's
+        // arrangement survives and comes back untouched.
+        SwitchPreference(setting, Defaults.PREF_VOICE_INPUT_LONG_FORM) { enabled ->
+            if (enabled) addPinnedKey(ctx.prefs(), ToolbarKey.VOICE_LONG_FORM)
+        }
     },
     Setting(context, Settings.PREF_VOICE_INPUT_KEEP_TYPING,
         R.string.voice_input_keep_typing, R.string.voice_input_keep_typing_summary

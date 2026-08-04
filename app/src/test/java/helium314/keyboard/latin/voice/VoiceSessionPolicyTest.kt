@@ -122,6 +122,22 @@ class VoiceSessionPolicyTest {
                 VoiceSessionPolicy.NO_ERROR_CAP, VoiceSessionPolicy.MAX_CLIENT_ERRORS))
     }
 
+    // --- long-form still stops eventually ------------------------------------------------------
+
+    @Test fun longFormGivesUpAfterLongIdleness() {
+        // a forgotten session must not hold the microphone open indefinitely
+        assertEquals(ErrorAction.TERMINAL,
+            VoiceSessionPolicy.onError(SpeechRecognizer.ERROR_NO_MATCH, false, true, 0, false, false,
+                VoiceSessionPolicy.NO_ERROR_CAP, 0, VoiceSessionPolicy.LONG_FORM_IDLE_TIMEOUT_MS))
+    }
+
+    @Test fun longFormKeepsGoingWhileItIsStillProducingText() {
+        // measured from the last result, so a session in use never expires
+        assertEquals(ErrorAction.RESTART,
+            VoiceSessionPolicy.onError(SpeechRecognizer.ERROR_NO_MATCH, false, true, 0, false, false,
+                VoiceSessionPolicy.NO_ERROR_CAP, 0, VoiceSessionPolicy.LONG_FORM_IDLE_TIMEOUT_MS - 1))
+    }
+
     // --- our own writes must not read as the user moving the caret -------------------------
 
     @Test fun echoesOfOurOwnWritesDoNotEndDictation() {

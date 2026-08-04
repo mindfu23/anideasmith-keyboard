@@ -89,6 +89,9 @@ class VoiceInputController(private val context: Context, private val listener: L
 
     private val handler = Handler(Looper.getMainLooper())
 
+    /** Uptime of the last recognised text, for the long-form idle ceiling. */
+    private var lastResultAt = 0L
+
     fun start(
         locale: Locale?, preferOffline: Boolean, autoPunctuation: Boolean, service: String?,
         longForm: Boolean = false
@@ -99,6 +102,7 @@ class VoiceInputController(private val context: Context, private val listener: L
         this.autoPunctuation = autoPunctuation
         this.serviceComponent = service?.takeIf { it.isNotEmpty() }
         this.longForm = longForm
+        lastResultAt = android.os.SystemClock.uptimeMillis()
         startInternal(locale, preferOffline)
     }
 
@@ -307,7 +311,8 @@ class VoiceInputController(private val context: Context, private val listener: L
             val action = VoiceSessionPolicy.onError(
                 error, cancelling, isActive, consecutiveErrors, usingOnDevice, retriedOnline,
                 if (longForm) VoiceSessionPolicy.NO_ERROR_CAP else VoiceSessionPolicy.MAX_CONSECUTIVE_ERRORS,
-                clientErrors
+                clientErrors,
+                if (longForm) android.os.SystemClock.uptimeMillis() - lastResultAt else 0
             )
             if (action == VoiceSessionPolicy.ErrorAction.IGNORE) return
             if (action == VoiceSessionPolicy.ErrorAction.RESTART) {
@@ -341,6 +346,7 @@ class VoiceInputController(private val context: Context, private val listener: L
             if (cancelling) return
             consecutiveErrors = 0 // the engine is working; any earlier silence is forgiven
             clientErrors = 0
+            lastResultAt = android.os.SystemClock.uptimeMillis()
             if (text != null) listener.onVoiceInputFinal(text)
             if (isActive) {
                 restartListening() // keep dictating until the user stops

@@ -1022,7 +1022,7 @@ New dictionary:
     <!-- Switch for dictation that runs until stopped rather than ending after a silence -->
     <string name="voice_input_long_form">Long-form dictation</string>
     <!-- Description for "voice_input_long_form" option. -->
-    <string name="voice_input_long_form_summary">Adds a second microphone key that keeps listening through long pauses until you stop it. The plain microphone key stays short-form, so you can choose per use. Pin it under Toolbar settings.</string>
+    <string name="voice_input_long_form_summary">Enables long-form dictation, and pins the long-form icon to the toolbar. Select to start dictation, select again to stop.</string>
     <!-- Switch allowing typing while dictation is still running -->
     <string name="voice_input_keep_typing">Keep dictating while typing</string>
     <!-- Description for "voice_input_keep_typing" option. -->

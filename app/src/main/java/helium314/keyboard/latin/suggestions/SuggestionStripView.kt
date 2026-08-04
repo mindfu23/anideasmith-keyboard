@@ -9,6 +9,7 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.SharedPreferences
 import android.content.SharedPreferences.OnSharedPreferenceChangeListener
+import android.animation.ValueAnimator
 import android.graphics.Color
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
@@ -69,6 +70,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 @SuppressLint("InflateParams")
+private const val PULSE_MILLIS = 900L
+private const val PULSE_MIN_ALPHA = 70
+
 class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int) :
     RelativeLayout(context, attrs, defStyle), View.OnClickListener, OnLongClickListener, OnSharedPreferenceChangeListener {
 
@@ -122,6 +126,7 @@ class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int)
     private val incognitoIcon = KeyboardIconsSet.instance.getNewDrawable(ToolbarKey.INCOGNITO.name, context)
     private val toolbarArrowIcon = KeyboardIconsSet.instance.getNewDrawable(KeyboardIconsSet.NAME_TOOLBAR_KEY, context)
     private val defaultToolbarBackground: Drawable = toolbarExpandKey.background
+    private var voicePulse: ValueAnimator? = null
     private val enabledToolKeyBackground = GradientDrawable()
     private var direction = 1 // 1 if LTR, -1 if RTL
 
@@ -253,19 +258,39 @@ class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int)
     }
 
     /**
-     * Marks the voice key as active while dictating.
+     * Marks the voice key as active while dictating, pulsing during a long-form session.
      *
      * The "Listening…" row lives inside [suggestionsStrip], so any suggestion update clears it —
      * and during long-form dictation the user is typing and picking suggestions on purpose. The
      * pinned key survives all of that, so it is the one place the state can be shown continuously.
      */
-    fun setVoiceInputActive(active: Boolean) {
+    @JvmOverloads
+    fun setVoiceInputActive(active: Boolean, pulsing: Boolean = false) {
+        voicePulse?.cancel()
+        voicePulse = null
         val key = pinnedKeys.findViewWithTag<View>(ToolbarKey.VOICE)
             ?: toolbar.findViewWithTag<View>(ToolbarKey.VOICE)
             ?: return
-        key.background =
-            if (active) enabledToolKeyBackground
-            else defaultToolbarBackground.constantState?.newDrawable(resources)
+        if (!active) {
+            key.background = defaultToolbarBackground.constantState?.newDrawable(resources)
+            return
+        }
+        // the enter key's colour, so "live" reads the same way it does elsewhere on the keyboard
+        val color = Settings.getValues().mColors.get(ColorType.ACTION_KEY_BACKGROUND) or -0x1000000
+        val background = GradientDrawable().apply {
+            colors = intArrayOf(color, Color.TRANSPARENT)
+            gradientType = GradientDrawable.RADIAL_GRADIENT
+            gradientRadius = resources.getDimensionPixelSize(R.dimen.config_suggestions_strip_height) / 2.1f
+        }
+        key.background = background
+        if (!pulsing) return
+        voicePulse = ValueAnimator.ofInt(PULSE_MIN_ALPHA, 255).apply {
+            duration = PULSE_MILLIS
+            repeatMode = ValueAnimator.REVERSE
+            repeatCount = ValueAnimator.INFINITE
+            addUpdateListener { background.alpha = it.animatedValue as Int }
+            start()
+        }
     }
 
     fun setExternalSuggestionView(view: View?, addCloseButton: Boolean) {

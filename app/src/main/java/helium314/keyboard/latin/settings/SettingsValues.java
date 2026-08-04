@@ -129,6 +129,8 @@ public class SettingsValues {
     public final boolean mVoiceInputAutoPunctuation;
     public final boolean mVoiceInputPreferOffline;
     public final String mVoiceInputService;
+    public final boolean mVoiceInputLongForm;
+    public final boolean mVoiceInputKeepTyping;
     public final float mBottomPaddingScale;
     public final float mSidePaddingScale;
     public final ToolbarMode mToolbarMode;
@@ -226,6 +228,8 @@ public class SettingsValues {
         mVoiceInputAutoPunctuation = prefs.getBoolean(Settings.PREF_VOICE_INPUT_AUTO_PUNCTUATION, Defaults.PREF_VOICE_INPUT_AUTO_PUNCTUATION);
         mVoiceInputPreferOffline = prefs.getBoolean(Settings.PREF_VOICE_INPUT_PREFER_OFFLINE, Defaults.PREF_VOICE_INPUT_PREFER_OFFLINE);
         mVoiceInputService = prefs.getString(Settings.PREF_VOICE_INPUT_SERVICE, Defaults.PREF_VOICE_INPUT_SERVICE);
+        mVoiceInputLongForm = prefs.getBoolean(Settings.PREF_VOICE_INPUT_LONG_FORM, Defaults.PREF_VOICE_INPUT_LONG_FORM);
+        mVoiceInputKeepTyping = prefs.getBoolean(Settings.PREF_VOICE_INPUT_KEEP_TYPING, Defaults.PREF_VOICE_INPUT_KEEP_TYPING);
         mAutoCorrectionEnabledPerUserSettings = prefs.getBoolean(Settings.PREF_AUTO_CORRECTION, Defaults.PREF_AUTO_CORRECTION);
         mAutoCorrectEnabled = mAutoCorrectionEnabledPerUserSettings
                 && (mInputAttributes.mInputTypeShouldAutoCorrect || prefs.getBoolean(Settings.PREF_MORE_AUTO_CORRECTION, Defaults.PREF_MORE_AUTO_CORRECTION))

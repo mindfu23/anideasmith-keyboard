@@ -18,8 +18,18 @@ internal object VoiceSessionPolicy {
     /** Utterances that produce no speech before dictation gives up and releases the microphone. */
     const val MAX_CONSECUTIVE_ERRORS = 3
 
+    /**
+     * Long-form dictation never gives up on silence — it runs until the user stops it. Thinking for
+     * a minute mid-sentence is normal when composing prose, and the ordinary cap exists to stop a
+     * forgotten keyboard holding the microphone, which a deliberate mode does not need.
+     */
+    const val NO_ERROR_CAP = Int.MAX_VALUE
+
     /** Multiplied by the consecutive error count, so a failing engine backs off. */
     const val RESTART_BASE_DELAY_MS = 250
+
+    /** Ceiling for that backoff, so long-form dictation stays responsive after a long silence. */
+    const val MAX_RESTART_DELAY_MS = 2000L
 
     /** What to do when the recognizer reports an error. */
     enum class ErrorAction {
@@ -47,7 +57,7 @@ internal object VoiceSessionPolicy {
         error == SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE || error == SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED
 
     fun restartDelayMs(consecutiveErrors: Int): Long =
-        (RESTART_BASE_DELAY_MS.toLong() * consecutiveErrors).coerceAtLeast(0L)
+        (RESTART_BASE_DELAY_MS.toLong() * consecutiveErrors).coerceIn(0L, MAX_RESTART_DELAY_MS)
 
     /**
      * @param cancelling a deliberate teardown is in progress
@@ -62,10 +72,11 @@ internal object VoiceSessionPolicy {
         isActive: Boolean,
         consecutiveErrors: Int,
         usingOnDevice: Boolean,
-        retriedOnline: Boolean
+        retriedOnline: Boolean,
+        maxConsecutiveErrors: Int = MAX_CONSECUTIVE_ERRORS
     ): ErrorAction = when {
         cancelling -> ErrorAction.IGNORE
-        isActive && isRestartable(error) && consecutiveErrors < MAX_CONSECUTIVE_ERRORS -> ErrorAction.RESTART
+        isActive && isRestartable(error) && consecutiveErrors < maxConsecutiveErrors -> ErrorAction.RESTART
         isActive && usingOnDevice && !retriedOnline && isLanguageUnavailable(error) -> ErrorAction.RETRY_ONLINE
         else -> ErrorAction.TERMINAL
     }

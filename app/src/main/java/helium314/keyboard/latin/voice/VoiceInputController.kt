@@ -68,6 +68,10 @@ class VoiceInputController(private val context: Context, private val listener: L
     /** Empty means "whatever the system has chosen"; otherwise a flattened ComponentName. */
     private var serviceComponent: String? = null
 
+    /** Runs until the user stops it, tolerating silences that would end an ordinary session. */
+    var longForm = false
+        private set
+
     /** Kept so a restart can reissue the same request without rebuilding it. */
     private var currentIntent: Intent? = null
 
@@ -82,11 +86,15 @@ class VoiceInputController(private val context: Context, private val listener: L
 
     private val handler = Handler(Looper.getMainLooper())
 
-    fun start(locale: Locale?, preferOffline: Boolean, autoPunctuation: Boolean, service: String?) {
+    fun start(
+        locale: Locale?, preferOffline: Boolean, autoPunctuation: Boolean, service: String?,
+        longForm: Boolean = false
+    ) {
         retriedOnline = false
         consecutiveErrors = 0
         this.autoPunctuation = autoPunctuation
         this.serviceComponent = service?.takeIf { it.isNotEmpty() }
+        this.longForm = longForm
         startInternal(locale, preferOffline)
     }
 
@@ -218,6 +226,12 @@ class VoiceInputController(private val context: Context, private val listener: L
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE, locale.toLanguageTag())
             // widely ignored by engines — createOnDeviceSpeechRecognizer is the real mechanism
             putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, preferOffline)
+            if (longForm) {
+                // widely ignored by engines - the restart loop is what actually makes long
+                // silences survivable - but harmless to ask, and honoured by some
+                putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, LONG_FORM_SILENCE_MS)
+                putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, LONG_FORM_SILENCE_MS)
+            }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 putExtra(RecognizerIntent.EXTRA_MASK_OFFENSIVE_WORDS, false)
                 if (autoPunctuation)
@@ -287,7 +301,8 @@ class VoiceInputController(private val context: Context, private val listener: L
             Log.w(TAG, "onError ${errorName(error)}")
             restartPending = false // this attempt is over either way
             val action = VoiceSessionPolicy.onError(
-                error, cancelling, isActive, consecutiveErrors, usingOnDevice, retriedOnline
+                error, cancelling, isActive, consecutiveErrors, usingOnDevice, retriedOnline,
+                if (longForm) VoiceSessionPolicy.NO_ERROR_CAP else VoiceSessionPolicy.MAX_CONSECUTIVE_ERRORS
             )
             if (action == VoiceSessionPolicy.ErrorAction.IGNORE) return
             if (action == VoiceSessionPolicy.ErrorAction.RESTART) {
@@ -344,6 +359,9 @@ class VoiceInputController(private val context: Context, private val listener: L
 
     companion object {
         private val TAG = VoiceInputController::class.simpleName
+
+        /** What long-form dictation asks the engine to tolerate before ending an utterance. */
+        private const val LONG_FORM_SILENCE_MS = 30_000L
 
         fun errorName(error: Int) = when (error) {
             SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "ERROR_NETWORK_TIMEOUT"

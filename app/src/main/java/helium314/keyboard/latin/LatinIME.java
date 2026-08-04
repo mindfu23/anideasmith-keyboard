@@ -1083,6 +1083,7 @@ public class LatinIME extends InputMethodService implements
         // the dictation that produced them. Only a move we did not cause means the user or the app
         // went somewhere else, and dictating into that would put text where nobody is looking.
         if (mVoiceInputController != null && mVoiceInputController.isActive()
+                && !keepsTypingDuringDictation()
                 && (oldSelStart != newSelStart || oldSelEnd != newSelEnd)
                 && !mInputLogic.mConnection.isBelatedExpectedUpdate(oldSelStart, newSelStart,
                         oldSelEnd, newSelEnd, composingSpanStart, composingSpanEnd)) {
@@ -1443,12 +1444,19 @@ public class LatinIME extends InputMethodService implements
     // completely replace #onCodeInput.
     public void onEvent(@NonNull final Event event) {
         if (KeyCode.VOICE_INPUT == event.getKeyCode()) {
-            if (!onVoiceInputKey()) {
+            if (!onVoiceInputKey(false)) {
                 mRichImm.switchToShortcutIme(this);
             }
-        } else {
+        } else if (KeyCode.VOICE_INPUT_LONG_FORM == event.getKeyCode()) {
+            if (!onVoiceInputKey(true)) {
+                mRichImm.switchToShortcutIme(this);
+            }
+        } else if (!keepsTypingDuringDictation()) {
             // any other key ends dictation, and is then handled as normal input
             cancelVoiceInput("key press");
+        } else {
+            // dictation continues; settle our composing span so the keystroke lands after it
+            finishVoiceComposing();
         }
         final InputTransaction completeInputTransaction =
                 mInputLogic.onCodeInput(mSettings.getCurrent(), event,
@@ -1464,7 +1472,7 @@ public class LatinIME extends InputMethodService implements
      * @return true if dictation took over the key, false to fall through to the existing
      *         switch to another voice input method — that path stays unchanged.
      */
-    private boolean onVoiceInputKey() {
+    private boolean onVoiceInputKey(final boolean forceLongForm) {
         final SettingsValues settingsValues = mSettings.getCurrent();
         if (!settingsValues.mUseInlineVoiceInput) return false;
         if (mVoiceInputController != null && mVoiceInputController.isActive()) {
@@ -1499,7 +1507,8 @@ public class LatinIME extends InputMethodService implements
         mVoiceInputController.start(mRichImm.getCurrentSubtypeLocale(),
                 settingsValues.mVoiceInputPreferOffline,
                 settingsValues.mVoiceInputAutoPunctuation,
-                settingsValues.mVoiceInputService);
+                settingsValues.mVoiceInputService,
+                forceLongForm || settingsValues.mVoiceInputLongForm);
         return true;
     }
 
@@ -1511,6 +1520,16 @@ public class LatinIME extends InputMethodService implements
         if (!mVoiceInputComposing) return;
         mVoiceInputComposing = false;
         mInputLogic.mConnection.finishComposingText();
+    }
+
+    /**
+     * Whether typing, gestures and suggestions should leave dictation running. Only meaningful in
+     * long-form, where the user has deliberately asked for a session that outlives a pause.
+     */
+    private boolean keepsTypingDuringDictation() {
+        return mSettings.getCurrent().mVoiceInputKeepTyping
+                && mVoiceInputController != null && mVoiceInputController.isActive()
+                && mVoiceInputController.getLongForm();
     }
 
     private void cancelVoiceInput(final String reason) {
@@ -1647,7 +1666,8 @@ public class LatinIME extends InputMethodService implements
         // Gesture typing does not go through onEvent, so the any-key-cancels rule there does not
         // cover it. Without this, dictation could keep running while a gesture is committed and
         // the two would interleave text in the same field.
-        cancelVoiceInput("gesture typing");
+        if (keepsTypingDuringDictation()) finishVoiceComposing();
+        else cancelVoiceInput("gesture typing");
         mInputLogic.onStartBatchInput(mSettings.getCurrent(), mKeyboardSwitcher, mHandler);
         mGestureConsumer.onGestureStarted(mRichImm.getCurrentSubtypeLocale(), mKeyboardSwitcher.getKeyboard());
     }

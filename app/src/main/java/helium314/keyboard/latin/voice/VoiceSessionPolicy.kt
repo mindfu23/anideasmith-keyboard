@@ -25,6 +25,13 @@ internal object VoiceSessionPolicy {
      */
     const val NO_ERROR_CAP = Int.MAX_VALUE
 
+    /**
+     * Long-form still stops eventually. Without a ceiling a session survives being forgotten —
+     * pocket, another room, end of the day — holding the microphone open the whole time. Measured
+     * from the last recognised text, not from the start, so a session in use never expires.
+     */
+    const val LONG_FORM_IDLE_TIMEOUT_MS = 5 * 60 * 1000L
+
     /** Multiplied by the consecutive error count, so a failing engine backs off. */
     const val RESTART_BASE_DELAY_MS = 250
 
@@ -101,9 +108,12 @@ internal object VoiceSessionPolicy {
         usingOnDevice: Boolean,
         retriedOnline: Boolean,
         maxConsecutiveErrors: Int = MAX_CONSECUTIVE_ERRORS,
-        clientErrors: Int = 0
+        clientErrors: Int = 0,
+        msSinceLastResult: Long = 0
     ): ErrorAction = when {
         cancelling -> ErrorAction.IGNORE
+        // nothing recognised for a long time: the session has been forgotten, not paused
+        isActive && msSinceLastResult >= LONG_FORM_IDLE_TIMEOUT_MS -> ErrorAction.TERMINAL
         isActive && isRestartable(error) && consecutiveErrors < maxConsecutiveErrors -> ErrorAction.RESTART
         // transient: the engine was asked to listen again too soon, not a broken session
         isActive && error == SpeechRecognizer.ERROR_CLIENT && clientErrors < MAX_CLIENT_ERRORS -> ErrorAction.RESTART

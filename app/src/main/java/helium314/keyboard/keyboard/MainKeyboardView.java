@@ -26,6 +26,7 @@ import android.view.View;
 import android.view.ViewGroup;
 
 import androidx.annotation.NonNull;
+import android.text.TextUtils;
 import androidx.annotation.Nullable;
 
 import helium314.keyboard.accessibility.AccessibilityUtils;
@@ -803,6 +804,15 @@ public final class MainKeyboardView extends KeyboardView implements DrawingProxy
         return newLocales;
     }
 
+    /** Shown on the space bar in place of the language while dictation is running. */
+    @Nullable private String mDictationLabel;
+
+    public void setDictationLabel(@Nullable final String label) {
+        if (TextUtils.equals(mDictationLabel, label)) return;
+        mDictationLabel = label;
+        invalidateAllKeys();
+    }
+
     private void drawLanguageOnSpacebar(final Key key, final Canvas canvas, final Paint paint) {
         final Keyboard keyboard = getKeyboard();
         if (keyboard == null) {
@@ -814,7 +824,11 @@ public final class MainKeyboardView extends KeyboardView implements DrawingProxy
         paint.setTextSize(mLanguageOnSpacebarTextSize);
         final String customText = Settings.getValues().mSpaceBarText;
         final String spaceText;
-        if (!customText.isEmpty()) {
+        if (mDictationLabel != null) {
+            // while dictating, the space bar is the calmest place to say so: low, central, and
+            // the user is not typing on it
+            spaceText = mDictationLabel;
+        } else if (!customText.isEmpty()) {
             spaceText = customText;
         } else if (DebugFlags.DEBUG_ENABLED) {
             final String l = KeyboardSwitcher.getInstance().getLocaleAndConfidenceInfo();

@@ -998,7 +998,7 @@ New dictionary:
     <!-- Shown in place of the suggestions while dictation is running -->
     <string name="voice_input_listening">Listening…</string>
     <!-- Shown in place of the suggestions while a long-form dictation session is running -->
-    <string name="voice_input_listening_long_form">Long-form…</string>
+    <string name="voice_input_listening_long_form">Dictation</string>
     <!-- Description of the button that ends dictation -->
     <string name="voice_input_stop">Stop dictation</string>
     <!-- Switch for engine-supplied punctuation and capitalisation while dictating -->

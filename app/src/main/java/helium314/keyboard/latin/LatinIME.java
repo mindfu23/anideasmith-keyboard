@@ -1648,7 +1648,7 @@ public class LatinIME extends InputMethodService implements
     private void showVoiceInputStrip() {
         if (!hasSuggestionStripView()) return;
         final boolean longForm = mVoiceInputController != null && mVoiceInputController.getLongForm();
-        mVoiceInputStrip = VoiceInputStrip.Companion.create(this, mSuggestionStripView, longForm, () -> {
+        mVoiceInputStrip = VoiceInputStrip.Companion.create(this, mSuggestionStripView, () -> {
             if (mVoiceInputController != null) mVoiceInputController.stop();
             return Unit.INSTANCE;
         });

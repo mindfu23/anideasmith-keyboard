@@ -1010,6 +1010,16 @@ New dictionary:
     <string name="voice_input_service">Speech recognition service</string>
     <!-- List entry leaving the choice of speech recognition service to the system -->
     <string name="voice_input_service_default">System default</string>
+    <!-- Section heading for the dictation options -->
+    <string name="settings_category_dictation">Dictation settings</string>
+    <!-- Switch for dictation that runs until stopped rather than ending after a silence -->
+    <string name="voice_input_long_form">Long-form dictation</string>
+    <!-- Description for "voice_input_long_form" option. -->
+    <string name="voice_input_long_form_summary">Keep listening through long pauses until you stop it. Long-press the microphone key to start a long-form session without changing this setting.</string>
+    <!-- Switch allowing typing while dictation is still running -->
+    <string name="voice_input_keep_typing">Keep dictating while typing</string>
+    <!-- Description for "voice_input_keep_typing" option. -->
+    <string name="voice_input_keep_typing_summary">Typing, gesture typing and picking a suggestion no longer stop dictation. Only applies to long-form sessions.</string>
     <!-- Message shown when dictation ended without recognising anything -->
     <string name="voice_input_no_speech">No speech recognised</string>
 

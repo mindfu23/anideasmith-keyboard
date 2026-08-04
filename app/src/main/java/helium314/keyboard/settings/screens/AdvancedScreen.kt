@@ -96,14 +96,17 @@ fun AdvancedSettingsScreen(
         SettingsWithoutKey.BACKUP_RESTORE,
         if (BuildConfig.DEBUG || prefs.getBoolean(DebugSettings.PREF_SHOW_DEBUG_SETTINGS, Defaults.PREF_SHOW_DEBUG_SETTINGS))
             SettingsWithoutKey.DEBUG_SETTINGS else null,
-        R.string.settings_category_experimental,
+        R.string.settings_category_dictation,
         Settings.PREF_USE_INLINE_VOICE_INPUT,
-        // only meaningful once the feature is on, and they would otherwise be four rows of
-        // settings for something that does nothing
+        // only meaningful once the feature is on, and they would otherwise be rows of settings
+        // for something that does nothing
+        if (inlineVoiceInput) Settings.PREF_VOICE_INPUT_LONG_FORM else null,
+        if (inlineVoiceInput) Settings.PREF_VOICE_INPUT_KEEP_TYPING else null,
         if (inlineVoiceInput) Settings.PREF_VOICE_INPUT_AUTO_PUNCTUATION else null,
         if (inlineVoiceInput && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
             Settings.PREF_VOICE_INPUT_PREFER_OFFLINE else null,
         if (inlineVoiceInput) Settings.PREF_VOICE_INPUT_SERVICE else null,
+        R.string.settings_category_experimental,
         Settings.PREF_EMOJI_MAX_SDK,
         Settings.PREF_URL_DETECTION,
         if (BuildConfig.BUILD_TYPE != "nouserlib") SettingsWithoutKey.LOAD_GESTURE_LIB else null
@@ -282,6 +285,16 @@ fun createAdvancedSettings(context: Context) = listOf(
                 } else true
             }
         )
+    },
+    Setting(context, Settings.PREF_VOICE_INPUT_LONG_FORM,
+        R.string.voice_input_long_form, R.string.voice_input_long_form_summary
+    ) {
+        SwitchPreference(it, Defaults.PREF_VOICE_INPUT_LONG_FORM)
+    },
+    Setting(context, Settings.PREF_VOICE_INPUT_KEEP_TYPING,
+        R.string.voice_input_keep_typing, R.string.voice_input_keep_typing_summary
+    ) {
+        SwitchPreference(it, Defaults.PREF_VOICE_INPUT_KEEP_TYPING)
     },
     Setting(context, Settings.PREF_VOICE_INPUT_AUTO_PUNCTUATION,
         R.string.voice_input_auto_punctuation, R.string.voice_input_auto_punctuation_summary

@@ -9,7 +9,8 @@ PATH="$ANDROID_HOME/platform-tools:$PATH"
 IME=com.anideasmith.keyboard/helium314.keyboard.latin.LatinIME
 
 if ! adb devices | grep -q "device$"; then
-    TARGET=$(adb mdns services 2>/dev/null | grep "_adb-tls-connect" | awk '{print $3}' | head -1)
+    # regex not awk: a stale duplicate entry gets a "(2)" suffix and shifts the columns
+    TARGET=$(adb mdns services 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+:[0-9]+' | head -1)
     [ -n "$TARGET" ] || { echo "No device. Turn on Wireless debugging on the phone."; exit 1; }
     adb connect "$TARGET"
 fi

@@ -996,6 +996,8 @@ New dictionary:
     <string name="voice_input_not_in_password_field">Voice input is disabled in password fields</string>
     <!-- Shown in place of the suggestions while dictation is running -->
     <string name="voice_input_listening">Listening…</string>
+    <!-- Shown in place of the suggestions while a long-form dictation session is running -->
+    <string name="voice_input_listening_long_form">Listening, long-form…</string>
     <!-- Description of the button that ends dictation -->
     <string name="voice_input_stop">Stop dictation</string>
     <!-- Switch for engine-supplied punctuation and capitalisation while dictating -->

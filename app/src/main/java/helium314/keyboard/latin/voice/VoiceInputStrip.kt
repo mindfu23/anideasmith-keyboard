@@ -37,7 +37,7 @@ class VoiceInputStrip private constructor(val root: View, private val icon: Imag
         private const val LOUD_DB = 10f
         private const val MIN_ALPHA = 0.35f
 
-        fun create(context: Context, parent: ViewGroup, onStop: () -> Unit): VoiceInputStrip {
+        fun create(context: Context, parent: ViewGroup, longForm: Boolean, onStop: () -> Unit): VoiceInputStrip {
             val binding = VoiceInputSuggestionBinding.inflate(LayoutInflater.from(context), parent, false)
             val colors = Settings.getValues().mColors
 
@@ -48,7 +48,7 @@ class VoiceInputStrip private constructor(val root: View, private val icon: Imag
 
             val textView = binding.voiceInputSuggestionText
             KeyboardTypeface.applyToTextView(textView)
-            textView.setText(R.string.voice_input_listening)
+            textView.setText(if (longForm) R.string.voice_input_listening_long_form else R.string.voice_input_listening)
             textView.setTextColor(colors.get(ColorType.KEY_TEXT))
 
             val stopButton = binding.voiceInputSuggestionStop

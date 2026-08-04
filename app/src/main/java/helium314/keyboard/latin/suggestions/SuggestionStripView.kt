@@ -252,6 +252,22 @@ class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int)
         updateKeys()
     }
 
+    /**
+     * Marks the voice key as active while dictating.
+     *
+     * The "Listening…" row lives inside [suggestionsStrip], so any suggestion update clears it —
+     * and during long-form dictation the user is typing and picking suggestions on purpose. The
+     * pinned key survives all of that, so it is the one place the state can be shown continuously.
+     */
+    fun setVoiceInputActive(active: Boolean) {
+        val key = pinnedKeys.findViewWithTag<View>(ToolbarKey.VOICE)
+            ?: toolbar.findViewWithTag<View>(ToolbarKey.VOICE)
+            ?: return
+        key.background =
+            if (active) enabledToolKeyBackground
+            else defaultToolbarBackground.constantState?.newDrawable(resources)
+    }
+
     fun setExternalSuggestionView(view: View?, addCloseButton: Boolean) {
         clear()
         isExternalSuggestionVisible = true

@@ -2,9 +2,13 @@
 <!--
     SPDX-License-Identifier: GPL-3.0-only
 
-    LOCAL-ONLY build-type resource overlay. Overrides the IME name so the personal build is
-    distinguishable from the F-Droid install in the system keyboard list. Not for upstream.
+    LOCAL-ONLY build-type resource overlay. Gives the personal build its own identity so it is
+    distinguishable from the F-Droid install everywhere the old name would otherwise show
+    through. Not for upstream.
 -->
 <resources>
     <string name="english_ime_name" translatable="false">AnIdeaSmith Keyboard</string>
+    <string name="ime_settings" translatable="false">AnIdeaSmith Keyboard Settings</string>
+    <string name="spell_checker_service_name" translatable="false">AnIdeaSmith Spell Checker</string>
+    <string name="android_spell_checker_settings" translatable="false">AnIdeaSmith Spell Checker Settings</string>
 </resources>

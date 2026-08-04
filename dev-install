@@ -1,0 +1,29 @@
+#!/bin/sh
+# LOCAL-ONLY dev loop: build the personal APK, push it to the phone, select it.
+# Reconnects wireless debugging first, since the phone drops off after a reboot.
+set -e
+cd "$(dirname "$0")"
+
+export ANDROID_HOME="${ANDROID_HOME:-$HOME/Library/Android/sdk}"
+PATH="$ANDROID_HOME/platform-tools:$PATH"
+IME=com.anideasmith.keyboard/helium314.keyboard.latin.LatinIME
+
+if ! adb devices | grep -q "device$"; then
+    TARGET=$(adb mdns services 2>/dev/null | grep "_adb-tls-connect" | awk '{print $3}' | head -1)
+    [ -n "$TARGET" ] || { echo "No device. Turn on Wireless debugging on the phone."; exit 1; }
+    adb connect "$TARGET"
+fi
+
+# APKs build on JDK 17; the Robolectric tests need JDK 21 (see NOTES.md)
+JAVA_HOME=/Library/Java/JavaVirtualMachines/zulu-17.jdk/Contents/Home ./gradlew assemblePersonal
+
+adb install -r app/build/outputs/apk/personal/*.apk
+adb shell ime enable $IME >/dev/null
+adb shell ime set $IME
+echo "installed and selected"
+
+# tail the voice log unless told not to: ./dev-install.sh --no-log
+[ "$1" = "--no-log" ] && exit 0
+adb shell "logcat -c"
+echo "--- logging (ctrl-c to stop) ---"
+adb shell "logcat -s VoiceInputController:V LatinIME:V AndroidRuntime:E"

@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Microphone with a speech bubble, for long-form dictation.
+    Microphone path from Material Symbols (Apache-2.0); bubble drawn to match.
+    SPDX-License-Identifier: Apache-2.0 AND GPL-3.0-only
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="960"
+    android:viewportHeight="960">
+    <group
+        android:translateX="-176"
+        android:translateY="-67"
+        android:scaleX="1.139"
+        android:scaleY="1.139">
+        <path
+            android:fillColor="#FFF"
+            android:pathData="M480,560q-50,0 -85,-35t-35,-85v-240q0,-50 35,-85t85,-35q50,0 85,35t35,85v240q0,50 -35,85t-85,35ZM440,800v-83q-92,-13 -157.5,-78T203,481q-2,-17 9,-29t28,-12q17,0 28.5,11.5T284,480q14,70 69.5,115T480,640q72,0 127,-45.5T676,480q4,-17 15.5,-28.5T720,440q17,0 28,12t9,29q-14,91 -79,157t-158,79v83q0,17 -11.5,28.5T480,840q-17,0 -28.5,-11.5T440,800Z"/>
+    </group>
+    <path
+        android:strokeColor="#FFF"
+        android:strokeWidth="58"
+        android:strokeLineJoin="round"
+        android:pathData="M585,45 h300 q30,0 30,30 v205 q0,30 -30,30 h-125 l-70,80 l0,-80 h-65 q-30,0 -30,-30 v-205 q0,-30 30,-30 Z"/>
+    <path
+        android:fillColor="#FFF"
+        android:pathData="M646,121h169a23,23 0 0 1 23,23v0a23,23 0 0 1 -23,23h-169a23,23 0 0 1 -23,-23v-0a23,23 0 0 1 23,-23Z"/>
+    <path
+        android:fillColor="#FFF"
+        android:pathData="M646,197h94a23,23 0 0 1 23,23v0a23,23 0 0 1 -23,23h-94a23,23 0 0 1 -23,-23v-0a23,23 0 0 1 23,-23Z"/>
+</vector>

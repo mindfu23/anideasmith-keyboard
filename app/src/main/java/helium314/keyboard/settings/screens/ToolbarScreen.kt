@@ -19,6 +19,7 @@ import helium314.keyboard.latin.settings.Settings
 import helium314.keyboard.latin.utils.GestureDataGatheringSettings.filterBackgroundGatheringToolbarKeys
 import helium314.keyboard.latin.utils.Log
 import helium314.keyboard.latin.utils.ToolbarMode
+import helium314.keyboard.latin.utils.filterLongFormToolbarKey
 import helium314.keyboard.latin.utils.getActivity
 import helium314.keyboard.latin.utils.getStringResourceOrName
 import helium314.keyboard.latin.utils.prefs
@@ -95,14 +96,17 @@ fun createToolbarSettings(context: Context) = listOf(
     },
     Setting(context, Settings.PREF_TOOLBAR_KEYS, R.string.toolbar_keys) {
         val keys = Defaults.PREF_TOOLBAR_KEYS.filterBackgroundGatheringToolbarKeys(LocalContext.current.prefs())
+            .filterLongFormToolbarKey(LocalContext.current.prefs())
         ReorderSwitchPreference(it, keys)
     },
     Setting(context, Settings.PREF_PINNED_TOOLBAR_KEYS, R.string.pinned_toolbar_keys) {
         val keys = Defaults.PREF_PINNED_TOOLBAR_KEYS.filterBackgroundGatheringToolbarKeys(LocalContext.current.prefs())
+            .filterLongFormToolbarKey(LocalContext.current.prefs())
         ReorderSwitchPreference(it, keys)
     },
     Setting(context, Settings.PREF_CLIPBOARD_TOOLBAR_KEYS, R.string.clipboard_toolbar_keys) {
         val keys = Defaults.PREF_CLIPBOARD_TOOLBAR_KEYS.filterBackgroundGatheringToolbarKeys(LocalContext.current.prefs())
+            .filterLongFormToolbarKey(LocalContext.current.prefs())
         ReorderSwitchPreference(it, keys)
     },
     Setting(context, Settings.PREF_TOOLBAR_CUSTOM_KEY_CODES, R.string.customize_toolbar_key_codes) {

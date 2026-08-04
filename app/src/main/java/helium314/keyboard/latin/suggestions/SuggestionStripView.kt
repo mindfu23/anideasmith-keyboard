@@ -264,17 +264,22 @@ class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int)
      * and during long-form dictation the user is typing and picking suggestions on purpose. The
      * pinned key survives all of that, so it is the one place the state can be shown continuously.
      */
+    private fun voiceKeyView(which: ToolbarKey): View? =
+        pinnedKeys.findViewWithTag<View>(which) ?: toolbar.findViewWithTag<View>(which)
+
     @JvmOverloads
-    fun setVoiceInputActive(active: Boolean, pulsing: Boolean = false) {
+    fun setVoiceInputActive(active: Boolean, longForm: Boolean = false) {
         voicePulse?.cancel()
         voicePulse = null
-        val key = pinnedKeys.findViewWithTag<View>(ToolbarKey.VOICE)
-            ?: toolbar.findViewWithTag<View>(ToolbarKey.VOICE)
-            ?: return
-        if (!active) {
-            key.background = defaultToolbarBackground.constantState?.newDrawable(resources)
-            return
+        // clear both, so a mode change never leaves the other key looking live
+        listOf(ToolbarKey.VOICE, ToolbarKey.VOICE_LONG_FORM).forEach {
+            voiceKeyView(it)?.background = defaultToolbarBackground.constantState?.newDrawable(resources)
         }
+        if (!active) return
+        // the pulse belongs to the key that is actually running; a short-form session gets a
+        // steady highlight because it ends on its own and does not need watching
+        val key = voiceKeyView(if (longForm) ToolbarKey.VOICE_LONG_FORM else ToolbarKey.VOICE) ?: return
+        val pulsing = longForm
         // the enter key's colour, so "live" reads the same way it does elsewhere on the keyboard
         val color = Settings.getValues().mColors.get(ColorType.ACTION_KEY_BACKGROUND) or -0x1000000
         val background = GradientDrawable().apply {

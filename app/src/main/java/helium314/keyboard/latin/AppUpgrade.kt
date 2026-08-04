@@ -708,6 +708,18 @@ private object AppUpgrade {
                 prefs.edit { remove("emoji_recent_keys")  }
             }
         }
+        // LOCAL ONLY (drop before upstream PR): the long-form dictation key was appended to the
+        // existing key lists when it was introduced. Drop it so upgradeToolbarPrefs below puts it
+        // back next to the voice key, where it belongs. Harmless once every install has done it.
+        if (oldVersion < 4103) {
+            listOf(Settings.PREF_TOOLBAR_KEYS, Settings.PREF_PINNED_TOOLBAR_KEYS, Settings.PREF_CLIPBOARD_TOOLBAR_KEYS)
+                .forEach { pref ->
+                    val stored = prefs.getString(pref, null) ?: return@forEach
+                    prefs.edit { putString(pref, stored.split(Separators.ENTRY)
+                        .filterNot { it.substringBefore(Separators.KV) == ToolbarKey.VOICE_LONG_FORM.name }
+                        .joinToString(Separators.ENTRY)) }
+                }
+        }
         upgradeToolbarPrefs(prefs)
         LayoutUtilsCustom.onLayoutFileChanged() // just to be sure
         prefs.edit { putInt(Settings.PREF_VERSION_CODE, BuildConfig.VERSION_CODE) }

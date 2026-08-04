@@ -131,6 +131,7 @@ public class SettingsValues {
     public final String mVoiceInputService;
     public final boolean mVoiceInputLongForm;
     public final boolean mVoiceInputKeepTyping;
+    public final boolean mWiderSpaceBar;
     public final float mBottomPaddingScale;
     public final float mSidePaddingScale;
     public final ToolbarMode mToolbarMode;
@@ -230,6 +231,7 @@ public class SettingsValues {
         mVoiceInputService = prefs.getString(Settings.PREF_VOICE_INPUT_SERVICE, Defaults.PREF_VOICE_INPUT_SERVICE);
         mVoiceInputLongForm = prefs.getBoolean(Settings.PREF_VOICE_INPUT_LONG_FORM, Defaults.PREF_VOICE_INPUT_LONG_FORM);
         mVoiceInputKeepTyping = prefs.getBoolean(Settings.PREF_VOICE_INPUT_KEEP_TYPING, Defaults.PREF_VOICE_INPUT_KEEP_TYPING);
+        mWiderSpaceBar = prefs.getBoolean(Settings.PREF_WIDER_SPACE_BAR, Defaults.PREF_WIDER_SPACE_BAR);
         mAutoCorrectionEnabledPerUserSettings = prefs.getBoolean(Settings.PREF_AUTO_CORRECTION, Defaults.PREF_AUTO_CORRECTION);
         mAutoCorrectEnabled = mAutoCorrectionEnabledPerUserSettings
                 && (mInputAttributes.mInputTypeShouldAutoCorrect || prefs.getBoolean(Settings.PREF_MORE_AUTO_CORRECTION, Defaults.PREF_MORE_AUTO_CORRECTION))

@@ -85,6 +85,7 @@ fun AdvancedSettingsScreen(
         Settings.PREF_SPACE_TO_CHANGE_LANG,
         Settings.PREFS_LONG_PRESS_SYMBOLS_FOR_NUMPAD,
         Settings.PREF_ENABLE_EMOJI_ALT_PHYSICAL_KEY,
+        Settings.PREF_WIDER_SPACE_BAR,
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) Settings.PREF_SHOW_SETUP_WIZARD_ICON else null,
         Settings.PREF_ABC_AFTER_SYMBOL_SPACE,
         Settings.PREF_ABC_AFTER_NUMPAD_SPACE,
@@ -193,6 +194,11 @@ fun createAdvancedSettings(context: Context) = listOf(
         R.string.prefs_enable_emoji_alt_physical_key_summary)
     {
         SwitchPreference(it, Defaults.PREF_ENABLE_EMOJI_ALT_PHYSICAL_KEY)
+    },
+    Setting(context, Settings.PREF_WIDER_SPACE_BAR,
+        R.string.wider_space_bar, R.string.wider_space_bar_summary
+    ) {
+        SwitchPreference(it, Defaults.PREF_WIDER_SPACE_BAR) { KeyboardLayoutSet.onSystemLocaleChanged() }
     },
     Setting(context, Settings.PREF_SHOW_SETUP_WIZARD_ICON, R.string.show_setup_wizard_icon, R.string.show_setup_wizard_icon_summary) {
         val ctx = LocalContext.current

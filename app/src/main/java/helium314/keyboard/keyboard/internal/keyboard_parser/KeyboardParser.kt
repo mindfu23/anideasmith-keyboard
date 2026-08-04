@@ -34,6 +34,10 @@ import kotlin.math.roundToInt
  * By default, all normal keys have the same width and flags, which may cause issues with the
  * requirements of certain non-latin languages.
  */
+private const val WIDER_SPACE_BAR_SCALE = 1.15f
+private const val MAX_SPACE_BAR_WIDTH = 0.75f
+private const val MIN_NEIGHBOUR_SCALE = 0.6f
+
 class KeyboardParser(private val params: KeyboardParams, private val context: Context) {
     private val defaultLabelFlags = when {
         params.mId.element.isAlphabet -> params.mLocaleKeyboardInfos.labelFlags
@@ -164,6 +168,19 @@ class KeyboardParser(private val params: KeyboardParams, private val context: Co
             allKeys.forEach {
                 if (it.mWidth == -1f) varWidthKeys.add(it)
                 else totalWidth += it.mWidth
+            }
+
+            // A wider space bar. Space is the only variable-width key in its row, so it takes
+            // whatever the other keys leave — shrink them proportionally and it grows to match.
+            if (Settings.getValues().mWiderSpaceBar && varWidthKeys.size == 1
+                    && varWidthKeys.single().mBackgroundType == Key.BACKGROUND_TYPE_SPACEBAR
+                    && totalWidth > 0f && totalWidth < 1f) {
+                val wanted = ((1f - totalWidth) * WIDER_SPACE_BAR_SCALE).coerceAtMost(MAX_SPACE_BAR_WIDTH)
+                val factor = (1f - wanted) / totalWidth
+                if (factor > MIN_NEIGHBOUR_SCALE) { // never squash the neighbours to nothing
+                    allKeys.forEach { if (it.mWidth != -1f) it.mWidth *= factor }
+                    totalWidth = 1f - wanted
+                }
             }
 
             // set width for varWidthKeys

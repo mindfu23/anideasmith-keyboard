@@ -98,6 +98,35 @@ class VoiceSessionPolicyTest {
         assertFalse(VoiceSessionPolicy.shouldRestartAfterResult(isActive = true, cancelling = true, restartPending = false))
     }
 
+    // --- our own writes must not read as the user moving the caret -------------------------
+
+    @Test fun echoesOfOurOwnWritesDoNotEndDictation() {
+        // saying "exclamation point" is a 17-char partial resolving to a 1-char final; the
+        // selection updates lag behind and the late one looked like the user moving the caret
+        assertFalse(VoiceSessionPolicy.cursorMoveEndsDictation(0))
+        assertFalse(VoiceSessionPolicy.cursorMoveEndsDictation(VoiceSessionPolicy.WRITE_SETTLE_MS - 1))
+    }
+
+    @Test fun aLaterCursorMoveStillEndsDictation() {
+        // tapping elsewhere in the text is a real reason to stop
+        assertTrue(VoiceSessionPolicy.cursorMoveEndsDictation(VoiceSessionPolicy.WRITE_SETTLE_MS))
+        assertTrue(VoiceSessionPolicy.cursorMoveEndsDictation(10_000))
+    }
+
+    // --- long-form lifts the cap --------------------------------------------------------------
+
+    @Test fun longFormNeverGivesUpOnSilence() {
+        assertEquals(
+            ErrorAction.RESTART,
+            onError(SpeechRecognizer.ERROR_NO_MATCH, consecutiveErrors = 500) // long silence
+                .let { VoiceSessionPolicy.onError(SpeechRecognizer.ERROR_NO_MATCH, false, true, 500, false, false, VoiceSessionPolicy.NO_ERROR_CAP) }
+        )
+    }
+
+    @Test fun backoffIsCappedSoLongFormStaysResponsive() {
+        assertEquals(VoiceSessionPolicy.MAX_RESTART_DELAY_MS, VoiceSessionPolicy.restartDelayMs(1000))
+    }
+
     // --- backoff -------------------------------------------------------------------------------
 
     @Test fun restartBacksOffAsFailuresAccumulate() {

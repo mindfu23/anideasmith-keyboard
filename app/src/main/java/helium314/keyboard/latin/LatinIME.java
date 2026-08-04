@@ -23,6 +23,7 @@ import android.os.Bundle;
 import android.os.Debug;
 import android.os.Message;
 import android.os.Process;
+import android.os.SystemClock;
 import android.speech.SpeechRecognizer;
 import android.util.PrintWriterPrinter;
 import android.util.Printer;
@@ -69,6 +70,7 @@ import helium314.keyboard.latin.inputlogic.InputLogic;
 import helium314.keyboard.latin.personalization.PersonalizationHelper;
 import helium314.keyboard.latin.permissions.PermissionsUtil;
 import helium314.keyboard.latin.voice.VoiceInputController;
+import helium314.keyboard.latin.voice.VoiceSessionPolicy;
 import helium314.keyboard.latin.voice.VoiceInputStrip;
 import helium314.keyboard.latin.settings.Settings;
 import helium314.keyboard.latin.settings.SettingsValues;
@@ -147,6 +149,9 @@ public class LatinIME extends InputMethodService implements
     private boolean mVoiceInputComposing = false;
     // whether the current dictation session produced any text at all
     private boolean mVoiceInputGotResults = false;
+    // when we last wrote dictated text, so echoes of our own writes are not read as the user
+    // moving the caret. SystemClock.uptimeMillis, not wall clock.
+    private long mVoiceInputLastWrite = 0;
     // the "Listening…" row shown in place of the suggestions, non-null only while dictating
     @Nullable private VoiceInputStrip mVoiceInputStrip;
 
@@ -1084,6 +1089,8 @@ public class LatinIME extends InputMethodService implements
         // went somewhere else, and dictating into that would put text where nobody is looking.
         if (mVoiceInputController != null && mVoiceInputController.isActive()
                 && !keepsTypingDuringDictation()
+                && VoiceSessionPolicy.INSTANCE.cursorMoveEndsDictation(
+                        SystemClock.uptimeMillis() - mVoiceInputLastWrite)
                 && (oldSelStart != newSelStart || oldSelEnd != newSelEnd)
                 && !mInputLogic.mConnection.isBelatedExpectedUpdate(oldSelStart, newSelStart,
                         oldSelEnd, newSelEnd, composingSpanStart, composingSpanEnd)) {
@@ -1559,6 +1566,7 @@ public class LatinIME extends InputMethodService implements
             mVoiceInputComposing = true;
             // as a composing span, so the whole partial is replaced by the next one instead of
             // being appended to, and so the app shows it as provisional
+            mVoiceInputLastWrite = SystemClock.uptimeMillis();
             final boolean set = mInputLogic.mConnection.setComposingText(text, 1);
             // never the text itself — that is the user's speech
             Log.i(TAG, "voice partial: " + text.length() + " chars, connected="
@@ -1568,6 +1576,7 @@ public class LatinIME extends InputMethodService implements
         @Override
         public void onVoiceInputFinal(@NonNull final String text) {
             final RichInputConnection connection = mInputLogic.mConnection;
+            mVoiceInputLastWrite = SystemClock.uptimeMillis();
             Log.i(TAG, "voice final: " + text.length() + " chars, connected=" + connection.isConnected());
             mVoiceInputGotResults = true;
             connection.beginBatchEdit();

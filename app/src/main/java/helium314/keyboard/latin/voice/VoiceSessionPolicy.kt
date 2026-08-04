@@ -31,6 +31,17 @@ internal object VoiceSessionPolicy {
     /** Ceiling for that backoff, so long-form dictation stays responsive after a long silence. */
     const val MAX_RESTART_DELAY_MS = 2000L
 
+    /**
+     * How long after our own write a cursor update may still be an echo of it.
+     *
+     * Selection updates arrive asynchronously and we write fast — a partial, its replacement, the
+     * finished span and a trailing space can all land inside one frame. A lagging update then no
+     * longer matches the connection's expected position and looks like the user moving the caret.
+     * Saying "exclamation point", which is a 17-character partial resolving to a 1-character
+     * final, was enough to trigger it and end dictation.
+     */
+    const val WRITE_SETTLE_MS = 500L
+
     /** What to do when the recognizer reports an error. */
     enum class ErrorAction {
         /** The utterance was empty; listen again. */
@@ -90,4 +101,10 @@ internal object VoiceSessionPolicy {
      */
     fun shouldRestartAfterResult(isActive: Boolean, cancelling: Boolean, restartPending: Boolean) =
         isActive && !cancelling && !restartPending
+
+    /**
+     * Whether a cursor move should end dictation, given how long ago we last wrote into the field.
+     * A move we caused is not a reason to stop; a move the user made is.
+     */
+    fun cursorMoveEndsDictation(msSinceOwnWrite: Long) = msSinceOwnWrite >= WRITE_SETTLE_MS
 }

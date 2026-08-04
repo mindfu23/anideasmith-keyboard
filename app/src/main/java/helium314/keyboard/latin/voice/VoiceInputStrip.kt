@@ -6,7 +6,6 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
-import helium314.keyboard.keyboard.KeyboardTypeface
 import helium314.keyboard.keyboard.internal.KeyboardIconsSet
 import helium314.keyboard.latin.R
 import helium314.keyboard.latin.common.ColorType
@@ -37,7 +36,7 @@ class VoiceInputStrip private constructor(val root: View, private val icon: Imag
         private const val LOUD_DB = 10f
         private const val MIN_ALPHA = 0.35f
 
-        fun create(context: Context, parent: ViewGroup, longForm: Boolean, onStop: () -> Unit): VoiceInputStrip {
+        fun create(context: Context, parent: ViewGroup, onStop: () -> Unit): VoiceInputStrip {
             val binding = VoiceInputSuggestionBinding.inflate(LayoutInflater.from(context), parent, false)
             val colors = Settings.getValues().mColors
 
@@ -46,10 +45,6 @@ class VoiceInputStrip private constructor(val root: View, private val icon: Imag
             colors.setColor(icon, ColorType.KEY_ICON)
             icon.alpha = MIN_ALPHA
 
-            val textView = binding.voiceInputSuggestionText
-            KeyboardTypeface.applyToTextView(textView)
-            textView.setText(if (longForm) R.string.voice_input_listening_long_form else R.string.voice_input_listening)
-            textView.setTextColor(colors.get(ColorType.KEY_TEXT))
 
             val stopButton = binding.voiceInputSuggestionStop
             stopButton.setImageDrawable(KeyboardIconsSet.instance.getIconDrawable(ToolbarKey.CLOSE_HISTORY.name.lowercase()))

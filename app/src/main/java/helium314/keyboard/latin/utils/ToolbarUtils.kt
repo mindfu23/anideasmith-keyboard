@@ -63,6 +63,7 @@ private fun setToolbarButtonActivatedState(button: ImageButton) {
 
 fun getCodeForToolbarKey(key: ToolbarKey) = Settings.getInstance().getCustomToolbarKeyCode(key) ?: when (key) {
     VOICE -> KeyCode.VOICE_INPUT
+    VOICE_LONG_FORM -> KeyCode.VOICE_INPUT_LONG_FORM
     CLIPBOARD -> KeyCode.CLIPBOARD
     NUMPAD -> KeyCode.NUMPAD
     DPAD -> KeyCode.DPAD
@@ -120,7 +121,7 @@ fun getCodeForToolbarKeyLongClick(key: ToolbarKey) = Settings.getInstance().getC
 
 // names need to be aligned with resources strings (using lowercase of key.name)
 enum class ToolbarKey {
-    VOICE, CLIPBOARD, NUMPAD, DPAD, UNDO, REDO, SETTINGS, SELECT_ALL, SELECT_WORD, COPY, CUT, PASTE, ONE_HANDED, FLOATING, SPLIT,
+    VOICE, VOICE_LONG_FORM, CLIPBOARD, NUMPAD, DPAD, UNDO, REDO, SETTINGS, SELECT_ALL, SELECT_WORD, COPY, CUT, PASTE, ONE_HANDED, FLOATING, SPLIT,
     INCOGNITO, AUTOCORRECT, CLEAR_CLIPBOARD, CLOSE_HISTORY, EMOJI, LEFT, RIGHT, UP, DOWN, WORD_LEFT, WORD_RIGHT,
     PAGE_UP, PAGE_DOWN, FULL_LEFT, FULL_RIGHT, PAGE_START, PAGE_END, BACKGROUND_GATHERING
 }
@@ -161,9 +162,18 @@ private fun upgradeToolbarPref(prefs: SharedPreferences, pref: String, default: 
     val list = prefs.getString(pref, default)!!.split(Separators.ENTRY).toMutableList()
     val splitDefault = defaultToolbarPref.split(Separators.ENTRY)
     splitDefault.forEach { entry ->
-        val keyWithSeparator = entry.substringBefore(Separators.KV) + Separators.KV
-        if (list.none { it.startsWith(keyWithSeparator) })
-            list.add("${keyWithSeparator}false")
+        val keyName = entry.substringBefore(Separators.KV)
+        val keyWithSeparator = keyName + Separators.KV
+        if (list.any { it.startsWith(keyWithSeparator) }) return@forEach
+        // Put a newly added key next to the one it belongs with rather than at the end of the
+        // list: insert it after the nearest key that precedes it in enum order and is already
+        // present. Appending buries a related key at the bottom of a long list.
+        val ordinal = runCatching { ToolbarKey.valueOf(keyName).ordinal }.getOrNull()
+        val insertAt = if (ordinal == null) list.size else list.indexOfLast {
+            val existing = runCatching { ToolbarKey.valueOf(it.substringBefore(Separators.KV)).ordinal }.getOrNull()
+            existing != null && existing < ordinal
+        } + 1
+        list.add(insertAt.coerceIn(0, list.size), "${keyWithSeparator}false")
     }
     // likely not needed, but better prepare for possibility of key removal
     list.removeAll {
@@ -204,9 +214,24 @@ fun removePinnedKey(prefs: SharedPreferences, key: ToolbarKey) {
     prefs.edit { putString(Settings.PREF_PINNED_TOOLBAR_KEYS, result) }
 }
 
+/**
+ * Whether long-form dictation is available at all. When it is not, its key is filtered out of the
+ * toolbar and the pickers — but the stored key lists are left alone, so turning the setting back on
+ * restores the user's arrangement exactly as it was.
+ */
+fun isLongFormDictationAvailable(prefs: SharedPreferences) =
+    prefs.getBoolean(Settings.PREF_USE_INLINE_VOICE_INPUT, Defaults.PREF_USE_INLINE_VOICE_INPUT)
+        && prefs.getBoolean(Settings.PREF_VOICE_INPUT_LONG_FORM, Defaults.PREF_VOICE_INPUT_LONG_FORM)
+
+fun String.filterLongFormToolbarKey(prefs: SharedPreferences) = split(Separators.ENTRY).filter {
+    isLongFormDictationAvailable(prefs) || ToolbarKey.VOICE_LONG_FORM.name !in it
+}.joinToString(Separators.ENTRY)
+
 private fun getEnabledToolbarKeys(prefs: SharedPreferences, pref: String, default: String): List<ToolbarKey> {
     val string = prefs.getString(pref, default)!!
+    val available = isLongFormDictationAvailable(prefs)
     return string.split(Separators.ENTRY).mapNotNull {
+        if (!available && ToolbarKey.VOICE_LONG_FORM.name in it) return@mapNotNull null
         val split = it.split(Separators.KV)
         if (split.last() == "true") {
             try {

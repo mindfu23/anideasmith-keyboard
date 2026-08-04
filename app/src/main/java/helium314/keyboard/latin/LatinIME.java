@@ -1516,7 +1516,9 @@ public class LatinIME extends InputMethodService implements
                 settingsValues.mVoiceInputPreferOffline,
                 settingsValues.mVoiceInputAutoPunctuation,
                 settingsValues.mVoiceInputService,
-                forceLongForm || settingsValues.mVoiceInputLongForm);
+                // the plain microphone key is always short-form; long-form comes from its own
+                // key or the long-press, and only when the user has made it available
+                forceLongForm && settingsValues.mVoiceInputLongForm);
         return true;
     }
 
@@ -1531,13 +1533,12 @@ public class LatinIME extends InputMethodService implements
     }
 
     /**
-     * Whether typing, gestures and suggestions should leave dictation running. Only meaningful in
-     * long-form, where the user has deliberately asked for a session that outlives a pause.
+     * Whether typing, gestures and suggestions should leave dictation running. Applies to both
+     * modes: a quick message often wants a spoken sentence and a typed correction.
      */
     private boolean keepsTypingDuringDictation() {
         return mSettings.getCurrent().mVoiceInputKeepTyping
-                && mVoiceInputController != null && mVoiceInputController.isActive()
-                && mVoiceInputController.getLongForm();
+                && mVoiceInputController != null && mVoiceInputController.isActive();
     }
 
     private void cancelVoiceInput(final String reason) {

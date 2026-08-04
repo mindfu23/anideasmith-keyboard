@@ -350,6 +350,7 @@
     <string name="clipboard" tools:keep="@string/clipboard">Clipboard</string>
     <string name="clear_clipboard" tools:keep="@string/clear_clipboard">Clear clipboard</string>
     <string name="voice" tools:keep="@string/voice">Voice input</string>
+    <string name="voice_long_form" tools:keep="@string/voice_long_form">Long-form dictation</string>
     <string name="numpad" tools:keep="@string/numpad" translatable="false">@string/layout_numpad</string>
     <string name="dpad" tools:keep="@string/dpad" translatable="false">@string/layout_dpad</string>
     <string name="settings" tools:keep="@string/settings">Settings</string>
@@ -997,7 +998,7 @@ New dictionary:
     <!-- Shown in place of the suggestions while dictation is running -->
     <string name="voice_input_listening">Listening…</string>
     <!-- Shown in place of the suggestions while a long-form dictation session is running -->
-    <string name="voice_input_listening_long_form">Listening, long-form…</string>
+    <string name="voice_input_listening_long_form">Long-form…</string>
     <!-- Description of the button that ends dictation -->
     <string name="voice_input_stop">Stop dictation</string>
     <!-- Switch for engine-supplied punctuation and capitalisation while dictating -->
@@ -1021,11 +1022,11 @@ New dictionary:
     <!-- Switch for dictation that runs until stopped rather than ending after a silence -->
     <string name="voice_input_long_form">Long-form dictation</string>
     <!-- Description for "voice_input_long_form" option. -->
-    <string name="voice_input_long_form_summary">Keep listening through long pauses until you stop it. Long-press the microphone key to start a long-form session without changing this setting.</string>
+    <string name="voice_input_long_form_summary">Adds a second microphone key that keeps listening through long pauses until you stop it. The plain microphone key stays short-form, so you can choose per use. Pin it under Toolbar settings.</string>
     <!-- Switch allowing typing while dictation is still running -->
     <string name="voice_input_keep_typing">Keep dictating while typing</string>
     <!-- Description for "voice_input_keep_typing" option. -->
-    <string name="voice_input_keep_typing_summary">Typing, gesture typing and picking a suggestion no longer stop dictation. Only applies to long-form sessions.</string>
+    <string name="voice_input_keep_typing_summary">Typing, gesture typing and picking a suggestion no longer stop dictation.</string>
     <!-- Message shown when dictation ended without recognising anything -->
     <string name="voice_input_no_speech">No speech recognised</string>
 

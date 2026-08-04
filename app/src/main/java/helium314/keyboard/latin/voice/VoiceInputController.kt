@@ -153,13 +153,13 @@ class VoiceInputController(private val context: Context, private val listener: L
         // The engine can report more than one final for a single utterance — saying a trailing
         // "period" is enough to produce a second one. Restarting for each would race two
         // startListening calls and the loser gets ERROR_RECOGNIZER_BUSY, which is terminal.
-        if (restartPending) {
-            Log.i(TAG, "restart already pending, ignoring")
+        if (!VoiceSessionPolicy.shouldRestartAfterResult(isActive, cancelling, restartPending)) {
+            Log.i(TAG, "not restarting (pending=$restartPending, active=$isActive)")
             return
         }
         val r = recognizer ?: return
         val intent = currentIntent ?: return
-        val delay = RESTART_BASE_DELAY_MS * consecutiveErrors
+        val delay = VoiceSessionPolicy.restartDelayMs(consecutiveErrors)
         restartPending = true
         handler.postDelayed({
             // stop() or cancel() may have landed while this was queued
@@ -169,7 +169,7 @@ class VoiceInputController(private val context: Context, private val listener: L
             } else {
                 restartPending = false
             }
-        }, delay.toLong())
+        }, delay)
     }
 
     /** Stop listening but keep whatever has been recognised — final results still arrive. */
@@ -286,25 +286,24 @@ class VoiceInputController(private val context: Context, private val listener: L
         override fun onError(error: Int) {
             Log.w(TAG, "onError ${errorName(error)}")
             restartPending = false // this attempt is over either way
-            if (cancelling) return
-
-            // A pause between sentences ends the utterance rather than the dictation. Listen
-            // again, up to a cap, so silence eventually stops the microphone by itself.
-            if (isActive && isRestartable(error) && consecutiveErrors < MAX_CONSECUTIVE_ERRORS) {
+            val action = VoiceSessionPolicy.onError(
+                error, cancelling, isActive, consecutiveErrors, usingOnDevice, retriedOnline
+            )
+            if (action == VoiceSessionPolicy.ErrorAction.IGNORE) return
+            if (action == VoiceSessionPolicy.ErrorAction.RESTART) {
+                // A pause between sentences ends the utterance, not the dictation.
                 consecutiveErrors++
                 restartListening()
                 return
             }
 
-            val wasActive = isActive
+            val retryOnline = action == VoiceSessionPolicy.ErrorAction.RETRY_ONLINE
             isActive = false
             release()
             // isOnDeviceRecognitionAvailable() reports true whenever the engine exists, even with
             // no downloaded model, so the on-device recognizer can only ever fail here. Fall back
             // to the general one once rather than leaving the user with a mic that does nothing.
-            if (wasActive && usingOnDevice && !retriedOnline
-                    && (error == SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE
-                        || error == SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED)) {
+            if (retryOnline) {
                 Log.i(TAG, "on-device recognition unavailable for the language, retrying online")
                 retriedOnline = true
                 startInternal(currentLocale, false)
@@ -345,16 +344,6 @@ class VoiceInputController(private val context: Context, private val listener: L
 
     companion object {
         private val TAG = VoiceInputController::class.simpleName
-
-        /** Utterances that produced no speech before dictation gives up on its own. */
-        private const val MAX_CONSECUTIVE_ERRORS = 3
-
-        /** Multiplied by the consecutive error count, so a failing engine backs off. */
-        private const val RESTART_BASE_DELAY_MS = 250
-
-        /** Errors that mean "this utterance had nothing in it", not "dictation is over". */
-        private fun isRestartable(error: Int) =
-            error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT
 
         fun errorName(error: Int) = when (error) {
             SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "ERROR_NETWORK_TIMEOUT"

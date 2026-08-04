@@ -32,6 +32,22 @@ internal object VoiceSessionPolicy {
     const val MAX_RESTART_DELAY_MS = 2000L
 
     /**
+     * Floor for the backoff. A result resets the failure count, so without this the next
+     * startListening is posted with no delay at all and can land while the engine is still
+     * tearing down the utterance that just finished — which it answers with ERROR_CLIENT. Dense
+     * speech makes that likely, because short utterances land every few hundred milliseconds.
+     */
+    const val MIN_RESTART_DELAY_MS = 120L
+
+    /**
+     * ERROR_CLIENT retries allowed before giving up. Mid-session it is usually the engine being
+     * restarted too soon rather than anything fatal, so it is worth retrying — but a genuinely
+     * broken engine must not loop forever, and lifting the silence cap in long-form would
+     * otherwise let it.
+     */
+    const val MAX_CLIENT_ERRORS = 3
+
+    /**
      * How long after our own write a cursor update may still be an echo of it.
      *
      * Selection updates arrive asynchronously and we write fast — a partial, its replacement, the
@@ -68,7 +84,7 @@ internal object VoiceSessionPolicy {
         error == SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE || error == SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED
 
     fun restartDelayMs(consecutiveErrors: Int): Long =
-        (RESTART_BASE_DELAY_MS.toLong() * consecutiveErrors).coerceIn(0L, MAX_RESTART_DELAY_MS)
+        (RESTART_BASE_DELAY_MS.toLong() * consecutiveErrors).coerceIn(MIN_RESTART_DELAY_MS, MAX_RESTART_DELAY_MS)
 
     /**
      * @param cancelling a deliberate teardown is in progress
@@ -84,10 +100,13 @@ internal object VoiceSessionPolicy {
         consecutiveErrors: Int,
         usingOnDevice: Boolean,
         retriedOnline: Boolean,
-        maxConsecutiveErrors: Int = MAX_CONSECUTIVE_ERRORS
+        maxConsecutiveErrors: Int = MAX_CONSECUTIVE_ERRORS,
+        clientErrors: Int = 0
     ): ErrorAction = when {
         cancelling -> ErrorAction.IGNORE
         isActive && isRestartable(error) && consecutiveErrors < maxConsecutiveErrors -> ErrorAction.RESTART
+        // transient: the engine was asked to listen again too soon, not a broken session
+        isActive && error == SpeechRecognizer.ERROR_CLIENT && clientErrors < MAX_CLIENT_ERRORS -> ErrorAction.RESTART
         isActive && usingOnDevice && !retriedOnline && isLanguageUnavailable(error) -> ErrorAction.RETRY_ONLINE
         else -> ErrorAction.TERMINAL
     }

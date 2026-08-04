@@ -711,8 +711,9 @@ public final class MainKeyboardView extends KeyboardView implements DrawingProxy
         super.onDrawKeyTopVisuals(key, canvas, paint, params);
         final int code = key.getCode();
         if (code == Constants.CODE_SPACE) {
-            // If input language are explicitly selected.
-            if (mLanguageOnSpacebarFormatType != LanguageOnSpacebarUtils.FORMAT_TYPE_NONE) {
+            // If input language are explicitly selected, or we have something else to say there.
+            if (mLanguageOnSpacebarFormatType != LanguageOnSpacebarUtils.FORMAT_TYPE_NONE
+                    || mDictationLabel != null) {
                 drawLanguageOnSpacebar(key, canvas, paint);
             }
             // Whether space key needs to show the "..." popup hint for special purposes

@@ -4,32 +4,18 @@ package helium314.keyboard.latin.voice
 import android.speech.SpeechRecognizer
 
 /**
- * The decisions a dictation session makes, separated from the machinery that carries them out.
- *
- * Every bug this feature has had was a decision bug rather than a wiring bug — restarting twice
- * for one utterance, not stopping when a gesture began, cancelling on a cursor move we caused
- * ourselves — and each one could only be found by talking to a phone. Pure functions can be
- * asserted in the unit test suite instead.
- *
- * Nothing here touches a recognizer, a handler or a view.
+ * The decisions a dictation session makes, kept apart from the machinery that carries them out so
+ * they can be unit tested. Nothing here touches a recognizer, a handler or a view.
  */
 internal object VoiceSessionPolicy {
 
     /** Utterances that produce no speech before dictation gives up and releases the microphone. */
     const val MAX_CONSECUTIVE_ERRORS = 3
 
-    /**
-     * Long-form dictation never gives up on silence — it runs until the user stops it. Thinking for
-     * a minute mid-sentence is normal when composing prose, and the ordinary cap exists to stop a
-     * forgotten keyboard holding the microphone, which a deliberate mode does not need.
-     */
+    /** Long-form runs until stopped: long pauses are normal when composing prose. */
     const val NO_ERROR_CAP = Int.MAX_VALUE
 
-    /**
-     * Long-form still stops eventually. Without a ceiling a session survives being forgotten —
-     * pocket, another room, end of the day — holding the microphone open the whole time. Measured
-     * from the last recognised text, not from the start, so a session in use never expires.
-     */
+    /** Backstop for a forgotten session. From the last result, so one in use never expires. */
     const val LONG_FORM_IDLE_TIMEOUT_MS = 5 * 60 * 1000L
 
     /** Multiplied by the consecutive error count, so a failing engine backs off. */
@@ -39,37 +25,25 @@ internal object VoiceSessionPolicy {
     const val MAX_RESTART_DELAY_MS = 2000L
 
     /**
-     * Floor for the backoff. A result resets the failure count, so without this the next
-     * startListening is posted with no delay at all and can land while the engine is still
-     * tearing down the utterance that just finished — which it answers with ERROR_CLIENT. Dense
-     * speech makes that likely, because short utterances land every few hundred milliseconds.
+     * Floor for the backoff. A result resets the failure count, so without this the restart is
+     * posted with no delay and lands while the engine is still tearing down — answered with
+     * ERROR_CLIENT.
      */
     const val MIN_RESTART_DELAY_MS = 120L
 
-    /**
-     * ERROR_CLIENT retries allowed before giving up. Mid-session it is usually the engine being
-     * restarted too soon rather than anything fatal, so it is worth retrying — but a genuinely
-     * broken engine must not loop forever, and lifting the silence cap in long-form would
-     * otherwise let it.
-     */
+    /** ERROR_CLIENT is usually transient, but needs its own cap since long-form lifts the other. */
     const val MAX_CLIENT_ERRORS = 3
 
     /**
-     * Per-retry delay after ERROR_CLIENT, which means the engine was not ready. Much larger than
-     * the ordinary floor: a client error says "come back later", and retrying 120ms later just
-     * asks the same question again. Client errors do not raise the silence count, so without this
-     * the backoff stays at its floor and three retries are spent in under half a second.
+     * Added per client error. Needed because client errors do not raise the silence count, so the
+     * backoff would otherwise stay at its floor and spend every retry in under half a second.
      */
     const val CLIENT_RETRY_DELAY_MS = 400L
 
     /**
-     * How long after our own write a cursor update may still be an echo of it.
-     *
-     * Selection updates arrive asynchronously and we write fast — a partial, its replacement, the
-     * finished span and a trailing space can all land inside one frame. A lagging update then no
-     * longer matches the connection's expected position and looks like the user moving the caret.
-     * Saying "exclamation point", which is a 17-character partial resolving to a 1-character
-     * final, was enough to trigger it and end dictation.
+     * How long after our own write a selection update may still be an echo of it. Updates arrive
+     * asynchronously and several writes can land in one frame, so a lagging one no longer matches
+     * the connection's expected position and looks like the user moving the caret.
      */
     const val WRITE_SETTLE_MS = 500L
 
@@ -90,10 +64,9 @@ internal object VoiceSessionPolicy {
         error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT
 
     /**
-     * Errors saying the chosen engine cannot serve this language.
-     * [SpeechRecognizer.isOnDeviceRecognitionAvailable] reports true whenever the on-device engine
-     * exists, even with no downloaded model, so an on-device session can hit these on a device
-     * that is otherwise perfectly capable.
+     * The chosen engine cannot serve this language. Reachable on a healthy device, because
+     * [SpeechRecognizer.isOnDeviceRecognitionAvailable] is true whenever the on-device engine
+     * exists, downloaded model or not.
      */
     fun isLanguageUnavailable(error: Int) =
         error == SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE || error == SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED
@@ -103,13 +76,7 @@ internal object VoiceSessionPolicy {
         (RESTART_BASE_DELAY_MS.toLong() * consecutiveErrors + CLIENT_RETRY_DELAY_MS * clientErrors)
             .coerceIn(MIN_RESTART_DELAY_MS, MAX_RESTART_DELAY_MS)
 
-    /**
-     * @param cancelling a deliberate teardown is in progress
-     * @param isActive the user still wants dictation
-     * @param consecutiveErrors utterances so far that produced nothing
-     * @param usingOnDevice the failing session was built by the on-device factory
-     * @param retriedOnline the one automatic fallback has already been spent
-     */
+    /** @param isActive the user still wants dictation, not merely that the recognizer is listening */
     fun onError(
         error: Int,
         cancelling: Boolean,
@@ -132,18 +99,12 @@ internal object VoiceSessionPolicy {
     }
 
     /**
-     * The engine can report more than one final for a single utterance — a spoken "period" is
-     * enough. Restarting for each races two startListening calls and the loser gets
-     * ERROR_RECOGNIZER_BUSY, which is terminal.
-     *
-     * @param restartPending a restart is already scheduled or issued but listening has not resumed
+     * The engine can report more than one final per utterance (a spoken "period" is enough), and
+     * restarting for each races two startListening calls — the loser gets ERROR_RECOGNIZER_BUSY.
      */
     fun shouldRestartAfterResult(isActive: Boolean, cancelling: Boolean, restartPending: Boolean) =
         isActive && !cancelling && !restartPending
 
-    /**
-     * Whether a cursor move should end dictation, given how long ago we last wrote into the field.
-     * A move we caused is not a reason to stop; a move the user made is.
-     */
+    /** A cursor move we caused is not a reason to stop; one the user made is. */
     fun cursorMoveEndsDictation(msSinceOwnWrite: Long) = msSinceOwnWrite >= WRITE_SETTLE_MS
 }

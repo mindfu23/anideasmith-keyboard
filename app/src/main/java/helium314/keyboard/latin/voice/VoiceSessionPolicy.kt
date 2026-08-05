@@ -55,6 +55,14 @@ internal object VoiceSessionPolicy {
     const val MAX_CLIENT_ERRORS = 3
 
     /**
+     * Per-retry delay after ERROR_CLIENT, which means the engine was not ready. Much larger than
+     * the ordinary floor: a client error says "come back later", and retrying 120ms later just
+     * asks the same question again. Client errors do not raise the silence count, so without this
+     * the backoff stays at its floor and three retries are spent in under half a second.
+     */
+    const val CLIENT_RETRY_DELAY_MS = 400L
+
+    /**
      * How long after our own write a cursor update may still be an echo of it.
      *
      * Selection updates arrive asynchronously and we write fast — a partial, its replacement, the
@@ -90,8 +98,10 @@ internal object VoiceSessionPolicy {
     fun isLanguageUnavailable(error: Int) =
         error == SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE || error == SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED
 
-    fun restartDelayMs(consecutiveErrors: Int): Long =
-        (RESTART_BASE_DELAY_MS.toLong() * consecutiveErrors).coerceIn(MIN_RESTART_DELAY_MS, MAX_RESTART_DELAY_MS)
+    @JvmOverloads
+    fun restartDelayMs(consecutiveErrors: Int, clientErrors: Int = 0): Long =
+        (RESTART_BASE_DELAY_MS.toLong() * consecutiveErrors + CLIENT_RETRY_DELAY_MS * clientErrors)
+            .coerceIn(MIN_RESTART_DELAY_MS, MAX_RESTART_DELAY_MS)
 
     /**
      * @param cancelling a deliberate teardown is in progress

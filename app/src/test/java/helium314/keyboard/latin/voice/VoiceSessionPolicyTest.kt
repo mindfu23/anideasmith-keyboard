@@ -24,7 +24,10 @@ class VoiceSessionPolicyTest {
         consecutiveErrors: Int = 0,
         usingOnDevice: Boolean = false,
         retriedOnline: Boolean = false
-    ) = VoiceSessionPolicy.onError(error, cancelling, isActive, consecutiveErrors, usingOnDevice, retriedOnline)
+    ) = VoiceSessionPolicy.onError(
+        error = error, cancelling = cancelling, isActive = isActive,
+        consecutiveErrors = consecutiveErrors, usingOnDevice = usingOnDevice, retriedOnline = retriedOnline
+    )
 
     // --- restart loop, the basis of continuous dictation -------------------------------------
 
@@ -110,16 +113,21 @@ class VoiceSessionPolicyTest {
     @Test fun clientErrorIsTransientAndRetried() {
         assertEquals(ErrorAction.RESTART, onError(SpeechRecognizer.ERROR_CLIENT))
         assertEquals(ErrorAction.RESTART,
-            VoiceSessionPolicy.onError(SpeechRecognizer.ERROR_CLIENT, false, true, 0, false, false,
-                VoiceSessionPolicy.MAX_CONSECUTIVE_ERRORS, VoiceSessionPolicy.MAX_CLIENT_ERRORS - 1))
+            VoiceSessionPolicy.onError(
+                error = SpeechRecognizer.ERROR_CLIENT, cancelling = false, isActive = true,
+                consecutiveErrors = 0, usingOnDevice = false, retriedOnline = false,
+                clientErrors = VoiceSessionPolicy.MAX_CLIENT_ERRORS - 1))
     }
 
     @Test fun aBrokenEngineStillGivesUp() {
         // long-form lifts the silence cap, so client errors need their own ceiling or a dead
         // engine would be retried forever
         assertEquals(ErrorAction.TERMINAL,
-            VoiceSessionPolicy.onError(SpeechRecognizer.ERROR_CLIENT, false, true, 0, false, false,
-                VoiceSessionPolicy.NO_ERROR_CAP, VoiceSessionPolicy.MAX_CLIENT_ERRORS))
+            VoiceSessionPolicy.onError(
+                error = SpeechRecognizer.ERROR_CLIENT, cancelling = false, isActive = true,
+                consecutiveErrors = 0, usingOnDevice = false, retriedOnline = false,
+                maxConsecutiveErrors = VoiceSessionPolicy.NO_ERROR_CAP,
+                clientErrors = VoiceSessionPolicy.MAX_CLIENT_ERRORS))
     }
 
     @Test fun clientErrorRetriesBackOffEvenWhenSilenceCountIsZero() {
@@ -135,15 +143,21 @@ class VoiceSessionPolicyTest {
     @Test fun longFormGivesUpAfterLongIdleness() {
         // a forgotten session must not hold the microphone open indefinitely
         assertEquals(ErrorAction.TERMINAL,
-            VoiceSessionPolicy.onError(SpeechRecognizer.ERROR_NO_MATCH, false, true, 0, false, false,
-                VoiceSessionPolicy.NO_ERROR_CAP, 0, VoiceSessionPolicy.LONG_FORM_IDLE_TIMEOUT_MS))
+            VoiceSessionPolicy.onError(
+                error = SpeechRecognizer.ERROR_NO_MATCH, cancelling = false, isActive = true,
+                consecutiveErrors = 0, usingOnDevice = false, retriedOnline = false,
+                maxConsecutiveErrors = VoiceSessionPolicy.NO_ERROR_CAP,
+                msSinceLastResult = VoiceSessionPolicy.LONG_FORM_IDLE_TIMEOUT_MS))
     }
 
     @Test fun longFormKeepsGoingWhileItIsStillProducingText() {
         // measured from the last result, so a session in use never expires
         assertEquals(ErrorAction.RESTART,
-            VoiceSessionPolicy.onError(SpeechRecognizer.ERROR_NO_MATCH, false, true, 0, false, false,
-                VoiceSessionPolicy.NO_ERROR_CAP, 0, VoiceSessionPolicy.LONG_FORM_IDLE_TIMEOUT_MS - 1))
+            VoiceSessionPolicy.onError(
+                error = SpeechRecognizer.ERROR_NO_MATCH, cancelling = false, isActive = true,
+                consecutiveErrors = 0, usingOnDevice = false, retriedOnline = false,
+                maxConsecutiveErrors = VoiceSessionPolicy.NO_ERROR_CAP,
+                msSinceLastResult = VoiceSessionPolicy.LONG_FORM_IDLE_TIMEOUT_MS - 1))
     }
 
     // --- our own writes must not read as the user moving the caret -------------------------
@@ -166,8 +180,10 @@ class VoiceSessionPolicyTest {
     @Test fun longFormNeverGivesUpOnSilence() {
         assertEquals(
             ErrorAction.RESTART,
-            onError(SpeechRecognizer.ERROR_NO_MATCH, consecutiveErrors = 500) // long silence
-                .let { VoiceSessionPolicy.onError(SpeechRecognizer.ERROR_NO_MATCH, false, true, 500, false, false, VoiceSessionPolicy.NO_ERROR_CAP) }
+            VoiceSessionPolicy.onError(
+                error = SpeechRecognizer.ERROR_NO_MATCH, cancelling = false, isActive = true,
+                consecutiveErrors = 500, usingOnDevice = false, retriedOnline = false,
+                maxConsecutiveErrors = VoiceSessionPolicy.NO_ERROR_CAP)
         )
     }
 

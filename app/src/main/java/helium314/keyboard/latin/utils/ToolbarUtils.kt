@@ -135,8 +135,16 @@ val toolbarKeyStrings = entries.associateWithTo(EnumMap(ToolbarKey::class.java))
 val defaultToolbarPref by lazy {
     val default = listOf(SETTINGS, VOICE, CLIPBOARD, UNDO, REDO, SELECT_WORD, COPY, PASTE, LEFT, RIGHT)
     val others = entries.filterNot { it in default || it == CLOSE_HISTORY }
-    default.joinToString(Separators.ENTRY) { it.name + Separators.KV + true } + Separators.ENTRY +
-            others.joinToString(Separators.ENTRY) { it.name + Separators.KV + false }
+    // enabled keys first, then the rest — except VOICE_LONG_FORM, which stays beside VOICE so the
+    // two microphones are found together rather than a screen apart in the picker
+    val ordered = buildList {
+        default.forEach {
+            add(it to true)
+            if (it == VOICE) add(VOICE_LONG_FORM to false)
+        }
+        others.filterNot { it == VOICE_LONG_FORM }.forEach { add(it to false) }
+    }
+    ordered.joinToString(Separators.ENTRY) { it.first.name + Separators.KV + it.second }
 }
 
 val defaultPinnedToolbarPref = entries.filterNot { it == CLOSE_HISTORY }.joinToString(Separators.ENTRY) {

@@ -147,7 +147,6 @@ public final class Settings implements SharedPreferences.OnSharedPreferenceChang
     public static final String PREF_VOICE_INPUT_AUTO_PUNCTUATION = "voice_input_auto_punctuation";
     public static final String PREF_VOICE_INPUT_PREFER_OFFLINE = "voice_input_prefer_offline";
     public static final String PREF_VOICE_INPUT_SERVICE = "voice_input_service";
-    public static final String PREF_VOICE_INPUT_LONG_FORM = "voice_input_long_form";
     public static final String PREF_VOICE_INPUT_KEEP_TYPING = "voice_input_keep_typing";
     public static final String PREF_WIDER_SPACE_BAR = "wider_space_bar";
 

@@ -70,7 +70,6 @@ fun AdvancedSettingsScreen(
     val b = (LocalContext.current.getActivity() as? SettingsActivity)?.prefChanged?.collectAsState()
     if ((b?.value ?: 0) < 0)
         Log.v("irrelevant", "stupid way to trigger recomposition on preference change")
-    val inlineVoiceInput = prefs.getBoolean(Settings.PREF_USE_INLINE_VOICE_INPUT, Defaults.PREF_USE_INLINE_VOICE_INPUT)
     val items = listOf(
         Settings.PREF_ALWAYS_INCOGNITO_MODE,
         Settings.PREF_KEY_LONGPRESS_TIMEOUT,
@@ -99,16 +98,6 @@ fun AdvancedSettingsScreen(
         SettingsWithoutKey.BACKUP_RESTORE,
         if (BuildConfig.DEBUG || prefs.getBoolean(DebugSettings.PREF_SHOW_DEBUG_SETTINGS, Defaults.PREF_SHOW_DEBUG_SETTINGS))
             SettingsWithoutKey.DEBUG_SETTINGS else null,
-        R.string.settings_category_dictation,
-        Settings.PREF_USE_INLINE_VOICE_INPUT,
-        // only meaningful once the feature is on, and they would otherwise be rows of settings
-        // for something that does nothing
-        if (inlineVoiceInput) Settings.PREF_VOICE_INPUT_LONG_FORM else null,
-        if (inlineVoiceInput) Settings.PREF_VOICE_INPUT_KEEP_TYPING else null,
-        if (inlineVoiceInput) Settings.PREF_VOICE_INPUT_AUTO_PUNCTUATION else null,
-        if (inlineVoiceInput && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
-            Settings.PREF_VOICE_INPUT_PREFER_OFFLINE else null,
-        if (inlineVoiceInput) Settings.PREF_VOICE_INPUT_SERVICE else null,
         R.string.settings_category_experimental,
         Settings.PREF_EMOJI_MAX_SDK,
         Settings.PREF_URL_DETECTION,
@@ -264,75 +253,6 @@ fun createAdvancedSettings(context: Context) = listOf(
             name = it.title,
             onClick = { SettingsDestination.navigateTo(SettingsDestination.Debug) }
         ) { NextScreenIcon() }
-    },
-    Setting(context, Settings.PREF_USE_INLINE_VOICE_INPUT,
-        R.string.use_inline_voice_input, R.string.use_inline_voice_input_summary
-    ) { setting ->
-        // mirrors the READ_CONTACTS switch in TextCorrectionScreen: the permission is only ever
-        // requested from here, because an InputMethodService cannot show a permission dialog
-        val activity = LocalContext.current.getActivity() ?: return@Setting
-        var granted by remember {
-            mutableStateOf(PermissionsUtil.checkAllPermissionsGranted(activity, Manifest.permission.RECORD_AUDIO))
-        }
-        val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
-            granted = it
-            if (granted)
-                activity.prefs().edit { putBoolean(setting.key, true) }
-            else
-                Toast.makeText(activity, R.string.voice_input_no_permission, Toast.LENGTH_LONG).show()
-        }
-        SwitchPreference(setting, Defaults.PREF_USE_INLINE_VOICE_INPUT,
-            allowCheckedChange = {
-                if (!it) true
-                else if (!SpeechRecognizer.isRecognitionAvailable(activity)) {
-                    Toast.makeText(activity, R.string.voice_input_not_available, Toast.LENGTH_LONG).show()
-                    false
-                } else if (!granted) {
-                    launcher.launch(Manifest.permission.RECORD_AUDIO)
-                    false
-                } else true
-            }
-        )
-    },
-    Setting(context, Settings.PREF_VOICE_INPUT_LONG_FORM,
-        R.string.voice_input_long_form, R.string.voice_input_long_form_summary
-    ) { setting ->
-        val ctx = LocalContext.current
-        // Pin the key when the capability is switched on, so it is reachable straight away.
-        // Switching off does not unpin: the key is filtered out while unavailable, so the user's
-        // arrangement survives and comes back untouched.
-        SwitchPreference(setting, Defaults.PREF_VOICE_INPUT_LONG_FORM) { enabled ->
-            if (enabled) addPinnedKey(ctx.prefs(), ToolbarKey.VOICE_LONG_FORM)
-        }
-    },
-    Setting(context, Settings.PREF_VOICE_INPUT_KEEP_TYPING,
-        R.string.voice_input_keep_typing, R.string.voice_input_keep_typing_summary
-    ) {
-        SwitchPreference(it, Defaults.PREF_VOICE_INPUT_KEEP_TYPING)
-    },
-    Setting(context, Settings.PREF_VOICE_INPUT_AUTO_PUNCTUATION,
-        R.string.voice_input_auto_punctuation, R.string.voice_input_auto_punctuation_summary
-    ) {
-        SwitchPreference(it, Defaults.PREF_VOICE_INPUT_AUTO_PUNCTUATION)
-    },
-    Setting(context, Settings.PREF_VOICE_INPUT_PREFER_OFFLINE,
-        R.string.voice_input_prefer_offline, R.string.voice_input_prefer_offline_summary
-    ) {
-        SwitchPreference(it, Defaults.PREF_VOICE_INPUT_PREFER_OFFLINE)
-    },
-    Setting(context, Settings.PREF_VOICE_INPUT_SERVICE, R.string.voice_input_service) { setting ->
-        // Also addresses upstream #1547, which asks to choose the engine. An empty value means
-        // "whatever the system default is", so a user who never touches this is unaffected.
-        val ctx = LocalContext.current
-        val services = remember {
-            val pm = ctx.packageManager
-            listOf(ctx.getString(R.string.voice_input_service_default) to "") +
-                pm.queryIntentServices(Intent(RecognitionService.SERVICE_INTERFACE), 0).map { info ->
-                    val label = info.serviceInfo.applicationInfo.loadLabel(pm).toString()
-                    label to ComponentName(info.serviceInfo.packageName, info.serviceInfo.name).flattenToString()
-                }
-        }
-        ListPreference(setting, services, Defaults.PREF_VOICE_INPUT_SERVICE)
     },
     Setting(context, Settings.PREF_EMOJI_MAX_SDK, R.string.prefs_key_emoji_max_sdk) { setting ->
         val ctx = LocalContext.current

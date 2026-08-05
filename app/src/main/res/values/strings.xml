@@ -1019,10 +1019,6 @@ New dictionary:
     <string name="wider_space_bar_summary">About 15% wider, taking the space from the keys next to it</string>
     <!-- Section heading for the dictation options -->
     <string name="settings_category_dictation">Dictation settings</string>
-    <!-- Switch for dictation that runs until stopped rather than ending after a silence -->
-    <string name="voice_input_long_form">Long-form dictation</string>
-    <!-- Description for "voice_input_long_form" option. -->
-    <string name="voice_input_long_form_summary">Enables long-form dictation, and pins the long-form icon to the toolbar. Select to start dictation, select again to stop.</string>
     <!-- Switch allowing typing while dictation is still running -->
     <string name="voice_input_keep_typing">Keep dictating while typing</string>
     <!-- Description for "voice_input_keep_typing" option. -->

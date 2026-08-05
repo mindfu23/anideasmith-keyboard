@@ -231,16 +231,19 @@ fun removePinnedKey(prefs: SharedPreferences, key: ToolbarKey) {
 fun isLongFormDictationAvailable(prefs: SharedPreferences) =
     prefs.getBoolean(Settings.PREF_USE_INLINE_VOICE_INPUT, Defaults.PREF_USE_INLINE_VOICE_INPUT)
 
-fun String.filterLongFormToolbarKey(prefs: SharedPreferences) = split(Separators.ENTRY).filter {
-    isLongFormDictationAvailable(prefs) || ToolbarKey.VOICE_LONG_FORM.name !in it
-}.joinToString(Separators.ENTRY)
+fun String.filterLongFormToolbarKey(prefs: SharedPreferences): String {
+    if (isLongFormDictationAvailable(prefs)) return this
+    return split(Separators.ENTRY)
+        .filterNot { it.substringBefore(Separators.KV) == ToolbarKey.VOICE_LONG_FORM.name }
+        .joinToString(Separators.ENTRY)
+}
 
 private fun getEnabledToolbarKeys(prefs: SharedPreferences, pref: String, default: String): List<ToolbarKey> {
     val string = prefs.getString(pref, default)!!
     val available = isLongFormDictationAvailable(prefs)
     return string.split(Separators.ENTRY).mapNotNull {
-        if (!available && ToolbarKey.VOICE_LONG_FORM.name in it) return@mapNotNull null
         val split = it.split(Separators.KV)
+        if (!available && split.first() == ToolbarKey.VOICE_LONG_FORM.name) return@mapNotNull null
         if (split.last() == "true") {
             try {
                 ToolbarKey.valueOf(split.first())

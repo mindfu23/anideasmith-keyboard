@@ -69,14 +69,14 @@ import helium314.keyboard.latin.define.DebugFlags;
 import helium314.keyboard.latin.inputlogic.InputLogic;
 import helium314.keyboard.latin.personalization.PersonalizationHelper;
 import helium314.keyboard.latin.permissions.PermissionsUtil;
-import helium314.keyboard.latin.voice.VoiceInputController;
-import helium314.keyboard.latin.voice.VoiceSessionPolicy;
-import helium314.keyboard.latin.voice.VoiceInputStrip;
 import helium314.keyboard.latin.settings.Settings;
 import helium314.keyboard.latin.settings.SettingsValues;
 import helium314.keyboard.latin.suggestions.SuggestionStripView;
 import helium314.keyboard.latin.suggestions.SuggestionStripViewAccessor;
 import helium314.keyboard.latin.touchinputconsumer.GestureConsumer;
+import helium314.keyboard.latin.voice.VoiceInputController;
+import helium314.keyboard.latin.voice.VoiceInputStrip;
+import helium314.keyboard.latin.voice.VoiceSessionPolicy;
 import helium314.keyboard.latin.utils.ColorUtilKt;
 import helium314.keyboard.latin.utils.FloatingKeyboardUtils;
 import helium314.keyboard.latin.utils.FoldableUtils;
@@ -152,7 +152,7 @@ public class LatinIME extends InputMethodService implements
     // when we last wrote dictated text, so echoes of our own writes are not read as the user
     // moving the caret. SystemClock.uptimeMillis, not wall clock.
     private long mVoiceInputLastWrite = 0;
-    // the "Listening…" row shown in place of the suggestions, non-null only while dictating
+    // the compact row shown in place of the suggestions, non-null only while dictating
     @Nullable private VoiceInputStrip mVoiceInputStrip;
 
     // TODO: Move these {@link View}s to {@link KeyboardSwitcher}.
@@ -1459,12 +1459,14 @@ public class LatinIME extends InputMethodService implements
             // long-press action at all, so with this feature disabled a long-press must keep
             // doing nothing rather than start switching input methods.
             onVoiceInputKey(true);
-        } else if (!keepsTypingDuringDictation()) {
-            // any other key ends dictation, and is then handled as normal input
-            cancelVoiceInput("key press");
-        } else {
-            // dictation continues; settle our composing span so the keystroke lands after it
-            finishVoiceComposing();
+        } else if (mVoiceInputController != null && mVoiceInputController.isActive()) {
+            if (mSettings.getCurrent().mVoiceInputKeepTyping) {
+                // dictation continues; settle our composing span so the keystroke lands after it
+                finishVoiceComposing();
+            } else {
+                // any other key ends dictation, and is then handled as normal input
+                cancelVoiceInput("key press");
+            }
         }
         final InputTransaction completeInputTransaction =
                 mInputLogic.onCodeInput(mSettings.getCurrent(), event,
@@ -1611,7 +1613,7 @@ public class LatinIME extends InputMethodService implements
         public void onVoiceInputError(final int error) {
             Log.w(TAG, "voice error: " + VoiceInputController.Companion.errorName(error));
             // Only the errors that mean "this cannot work as configured" are worth interrupting
-            // the user for. No match and speech timeout are ordinary and Phase 4 will restart on
+            // the user for; no match and speech timeout are ordinary and the session restarts on
             // them. But a fallback must never be a silent no-op.
             switch (error) {
                 case SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS:
@@ -1626,10 +1628,10 @@ public class LatinIME extends InputMethodService implements
                     break;
                 case SpeechRecognizer.ERROR_NO_MATCH:
                 case SpeechRecognizer.ERROR_SPEECH_TIMEOUT:
-                    // Ordinary between sentences, and phase 4 restarts on it — but if the whole
-                    // session produced nothing, the user just watched a microphone open, listen and
-                    // do nothing. That is indistinguishable from a broken keyboard, and it is what
-                    // a wedged recognition engine actually looks like.
+                    // Ordinary between sentences, and the session restarts on it — but if the
+                    // whole session produced nothing, the user just watched a microphone open,
+                    // listen and do nothing. That is indistinguishable from a broken keyboard, and
+                    // it is what a wedged recognition engine actually looks like.
                     if (!mVoiceInputGotResults) showVoiceInputToast(R.string.voice_input_no_speech);
                     break;
                 default:

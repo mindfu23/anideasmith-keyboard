@@ -122,6 +122,14 @@ class VoiceSessionPolicyTest {
                 VoiceSessionPolicy.NO_ERROR_CAP, VoiceSessionPolicy.MAX_CLIENT_ERRORS))
     }
 
+    @Test fun clientErrorRetriesBackOffEvenWhenSilenceCountIsZero() {
+        // a result resets consecutiveErrors, so a delay derived from it alone left the three
+        // client retries spent in under half a second, hammering an engine that said "not ready"
+        val floorOnly = VoiceSessionPolicy.restartDelayMs(0, 0)
+        assertTrue(VoiceSessionPolicy.restartDelayMs(0, 1) > floorOnly)
+        assertTrue(VoiceSessionPolicy.restartDelayMs(0, 2) > VoiceSessionPolicy.restartDelayMs(0, 1))
+    }
+
     // --- long-form still stops eventually ------------------------------------------------------
 
     @Test fun longFormGivesUpAfterLongIdleness() {

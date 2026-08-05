@@ -175,12 +175,12 @@ class VoiceInputController(private val context: Context, private val listener: L
         }
         val r = recognizer ?: return
         val intent = currentIntent ?: return
-        val delay = VoiceSessionPolicy.restartDelayMs(consecutiveErrors)
+        val delay = VoiceSessionPolicy.restartDelayMs(consecutiveErrors, clientErrors)
         restartPending = true
         handler.postDelayed({
             // stop() or cancel() may have landed while this was queued
             if (isActive && !cancelling) {
-                Log.i(TAG, "restarting listening (consecutiveErrors=$consecutiveErrors)")
+                Log.i(TAG, "restarting listening (consecutiveErrors=$consecutiveErrors, clientErrors=$clientErrors)")
                 r.startListening(intent)
             } else {
                 restartPending = false

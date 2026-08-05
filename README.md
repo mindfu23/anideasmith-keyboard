@@ -1,3 +1,23 @@
+> ## AnIdeaSmith Keyboard — a fork of HeliBoard
+>
+> This is a personal fork of [HeliBorg/HeliBoard](https://github.com/HeliBorg/HeliBoard) by
+> [AnIdeaSmith](https://github.com/mindfu23). Everything below this notice is upstream's README.
+>
+> **What this fork adds:** dictation that keeps the keyboard on screen instead of handing the
+> screen to another voice input method. Speech recognition runs in the system's out-of-process
+> `RecognitionService`, so **no `INTERNET` permission is added** and dictation works fully
+> offline with a downloaded language model. `RECORD_AUDIO` is requested only when you turn the
+> feature on, and is off by default. A second microphone key runs long-form sessions that
+> survive long pauses and let you keep typing.
+>
+> **Branches**
+> - `main` — mirror of upstream, no changes
+> - `personal` — the build I use: adds this fork's identity (`com.anideasmith.keyboard`) and a dev loop
+> - `feat/inline-voice-input` — the same feature with no personal changes, intended for an upstream PR
+>
+> **Licence** — GPL-3.0-only, as upstream. Source for any distributed build is this repository.
+> Bugs in this fork belong here, not on HeliBoard's tracker.
+
 # HeliBoard
 HeliBoard is a privacy-conscious and customizable open-source keyboard, based on AOSP / OpenBoard.
 Does not use internet permission, and thus is 100% offline.

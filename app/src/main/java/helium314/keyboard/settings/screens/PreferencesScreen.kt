@@ -1,6 +1,21 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package helium314.keyboard.settings.screens
 
+import android.Manifest
+import android.content.ComponentName
+import android.content.Intent
+import android.os.Build
+import android.speech.RecognitionService
+import android.speech.SpeechRecognizer
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.core.content.edit
+import helium314.keyboard.latin.permissions.PermissionsUtil
 import android.content.Context
 import android.media.AudioManager
 import androidx.compose.material3.Surface
@@ -42,6 +57,7 @@ fun PreferencesScreen(
     if ((b?.value ?: 0) < 0)
         Log.v("irrelevant", "stupid way to trigger recomposition on preference change")
     val clipboardHistoryEnabled = prefs.getBoolean(Settings.PREF_ENABLE_CLIPBOARD_HISTORY, Defaults.PREF_ENABLE_CLIPBOARD_HISTORY)
+    val inlineVoiceInput = prefs.getBoolean(Settings.PREF_USE_INLINE_VOICE_INPUT, Defaults.PREF_USE_INLINE_VOICE_INPUT)
     val items = listOf(
         R.string.settings_category_input,
         Settings.PREF_SHOW_HINTS,
@@ -82,6 +98,14 @@ fun PreferencesScreen(
         if (clipboardHistoryEnabled) Settings.PREF_CLIPBOARD_USE_FILES else null,
         if (clipboardHistoryEnabled && prefs.getBoolean(Settings.PREF_CLIPBOARD_USE_FILES, Defaults.PREF_CLIPBOARD_USE_FILES))
             Settings.PREF_CLIPBOARD_FILES_SIZE_LIMIT else null,
+        R.string.settings_category_dictation,
+        Settings.PREF_USE_INLINE_VOICE_INPUT,
+        // the rest only mean anything once dictation keeps the keyboard up
+        if (inlineVoiceInput) Settings.PREF_VOICE_INPUT_KEEP_TYPING else null,
+        if (inlineVoiceInput) Settings.PREF_VOICE_INPUT_AUTO_PUNCTUATION else null,
+        if (inlineVoiceInput && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
+            Settings.PREF_VOICE_INPUT_PREFER_OFFLINE else null,
+        if (inlineVoiceInput) Settings.PREF_VOICE_INPUT_SERVICE else null,
     )
     SearchSettingsScreen(
         onClickBack = onClickBack,
@@ -204,6 +228,64 @@ fun createPreferencesSettings(context: Context) = listOf(
             },
             range = 1f..1001f,
         ) { ClipboardDao.getInstance(ctx)?.cleanupFiles(ctx.prefs()) }
+    },
+    Setting(context, Settings.PREF_USE_INLINE_VOICE_INPUT,
+        R.string.use_inline_voice_input, R.string.use_inline_voice_input_summary
+    ) { setting ->
+        // mirrors the READ_CONTACTS switch in TextCorrectionScreen: the permission is only ever
+        // requested from here, because an InputMethodService cannot show a permission dialog
+        val activity = LocalContext.current.getActivity() ?: return@Setting
+        var granted by remember {
+            mutableStateOf(PermissionsUtil.checkAllPermissionsGranted(activity, Manifest.permission.RECORD_AUDIO))
+        }
+        val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+            granted = it
+            if (granted)
+                activity.prefs().edit { putBoolean(setting.key, true) }
+            else
+                Toast.makeText(activity, R.string.voice_input_no_permission, Toast.LENGTH_LONG).show()
+        }
+        SwitchPreference(setting, Defaults.PREF_USE_INLINE_VOICE_INPUT,
+            allowCheckedChange = {
+                if (!it) true
+                else if (!SpeechRecognizer.isRecognitionAvailable(activity)) {
+                    Toast.makeText(activity, R.string.voice_input_not_available, Toast.LENGTH_LONG).show()
+                    false
+                } else if (!granted) {
+                    launcher.launch(Manifest.permission.RECORD_AUDIO)
+                    false
+                } else true
+            }
+        )
+    },
+    Setting(context, Settings.PREF_VOICE_INPUT_KEEP_TYPING,
+        R.string.voice_input_keep_typing, R.string.voice_input_keep_typing_summary
+    ) {
+        SwitchPreference(it, Defaults.PREF_VOICE_INPUT_KEEP_TYPING)
+    },
+    Setting(context, Settings.PREF_VOICE_INPUT_AUTO_PUNCTUATION,
+        R.string.voice_input_auto_punctuation, R.string.voice_input_auto_punctuation_summary
+    ) {
+        SwitchPreference(it, Defaults.PREF_VOICE_INPUT_AUTO_PUNCTUATION)
+    },
+    Setting(context, Settings.PREF_VOICE_INPUT_PREFER_OFFLINE,
+        R.string.voice_input_prefer_offline, R.string.voice_input_prefer_offline_summary
+    ) {
+        SwitchPreference(it, Defaults.PREF_VOICE_INPUT_PREFER_OFFLINE)
+    },
+    Setting(context, Settings.PREF_VOICE_INPUT_SERVICE, R.string.voice_input_service) { setting ->
+        // Also addresses upstream #1547, which asks to choose the engine. An empty value means
+        // "whatever the system default is", so a user who never touches this is unaffected.
+        val ctx = LocalContext.current
+        val services = remember {
+            val pm = ctx.packageManager
+            listOf(ctx.getString(R.string.voice_input_service_default) to "") +
+                pm.queryIntentServices(Intent(RecognitionService.SERVICE_INTERFACE), 0).map { info ->
+                    val label = info.serviceInfo.applicationInfo.loadLabel(pm).toString()
+                    label to ComponentName(info.serviceInfo.packageName, info.serviceInfo.name).flattenToString()
+                }
+        }
+        ListPreference(setting, services, Defaults.PREF_VOICE_INPUT_SERVICE)
     },
     Setting(context, Settings.PREF_VIBRATION_DURATION_SETTINGS, R.string.prefs_keypress_vibration_duration_settings) { setting ->
         SliderPreference(

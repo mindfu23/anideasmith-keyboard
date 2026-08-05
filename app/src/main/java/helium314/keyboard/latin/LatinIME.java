@@ -1518,7 +1518,7 @@ public class LatinIME extends InputMethodService implements
                 settingsValues.mVoiceInputService,
                 // the plain microphone key is always short-form; long-form comes from its own
                 // key or the long-press, and only when the user has made it available
-                forceLongForm && settingsValues.mVoiceInputLongForm);
+                forceLongForm);
         return true;
     }
 

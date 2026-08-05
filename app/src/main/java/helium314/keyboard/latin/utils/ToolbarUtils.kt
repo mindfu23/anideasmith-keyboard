@@ -223,13 +223,13 @@ fun removePinnedKey(prefs: SharedPreferences, key: ToolbarKey) {
 }
 
 /**
- * Whether long-form dictation is available at all. When it is not, its key is filtered out of the
- * toolbar and the pickers — but the stored key lists are left alone, so turning the setting back on
- * restores the user's arrangement exactly as it was.
+ * Long-form dictation is an ordinary toolbar key the user enables like any other — there is no
+ * separate switch for it. It is only filtered out when dictation would not keep the keyboard up at
+ * all, since the key would otherwise hand off to an external voice IME and do nothing useful.
+ * Filtering happens at render time; the stored key lists are never rewritten.
  */
 fun isLongFormDictationAvailable(prefs: SharedPreferences) =
     prefs.getBoolean(Settings.PREF_USE_INLINE_VOICE_INPUT, Defaults.PREF_USE_INLINE_VOICE_INPUT)
-        && prefs.getBoolean(Settings.PREF_VOICE_INPUT_LONG_FORM, Defaults.PREF_VOICE_INPUT_LONG_FORM)
 
 fun String.filterLongFormToolbarKey(prefs: SharedPreferences) = split(Separators.ENTRY).filter {
     isLongFormDictationAvailable(prefs) || ToolbarKey.VOICE_LONG_FORM.name !in it

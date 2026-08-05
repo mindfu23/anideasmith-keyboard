@@ -18,6 +18,7 @@ import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Paint.Align;
 import android.graphics.Typeface;
+import android.text.TextUtils;
 import android.util.AttributeSet;
 import android.view.ContextThemeWrapper;
 import android.view.LayoutInflater;
@@ -26,7 +27,6 @@ import android.view.View;
 import android.view.ViewGroup;
 
 import androidx.annotation.NonNull;
-import android.text.TextUtils;
 import androidx.annotation.Nullable;
 
 import helium314.keyboard.accessibility.AccessibilityUtils;
@@ -87,6 +87,8 @@ public final class MainKeyboardView extends KeyboardView implements DrawingProxy
     private final int mLanguageOnSpacebarTextColor;
     private final float mLanguageOnSpacebarTextShadowRadius;
     private final int mLanguageOnSpacebarTextShadowColor;
+    /** Shown on the space bar in place of the language while dictation is running. */
+    @Nullable private String mDictationLabel;
     private static final float LANGUAGE_ON_SPACEBAR_TEXT_SHADOW_RADIUS_DISABLED = -1.0f;
     // The minimum x-scale to fit the language name on spacebar.
     private static final float MINIMUM_XSCALE_OF_LANGUAGE_NAME = 0.8f;
@@ -804,9 +806,6 @@ public final class MainKeyboardView extends KeyboardView implements DrawingProxy
         }
         return newLocales;
     }
-
-    /** Shown on the space bar in place of the language while dictation is running. */
-    @Nullable private String mDictationLabel;
 
     public void setDictationLabel(@Nullable final String label) {
         if (TextUtils.equals(mDictationLabel, label)) return;

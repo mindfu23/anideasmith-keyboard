@@ -15,9 +15,10 @@ import android.speech.RecognitionSupportCallback
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import androidx.annotation.RequiresApi
+import helium314.keyboard.latin.define.DebugFlags
 import helium314.keyboard.latin.utils.Log
 import java.util.Locale
-import java.util.concurrent.Executors
+import java.util.concurrent.Executor
 
 /**
  * Owns a [SpeechRecognizer] and turns it into a simple start/stop/cancel surface.
@@ -116,7 +117,7 @@ class VoiceInputController(private val context: Context, private val listener: L
             listener.onVoiceInputError(SpeechRecognizer.ERROR_CLIENT)
             return
         }
-        logResolvedService()
+        if (DebugFlags.DEBUG_ENABLED) logResolvedService()
 
         // An explicitly chosen engine wins over the on-device preference: the on-device factory
         // takes no component, so honouring both is not possible.
@@ -147,7 +148,7 @@ class VoiceInputController(private val context: Context, private val listener: L
 
         val intent = buildIntent(locale, preferOffline)
         currentIntent = intent
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
+        if (DebugFlags.DEBUG_ENABLED && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
             logRecognitionSupport(r, intent)
 
         isActive = true
@@ -265,7 +266,7 @@ class VoiceInputController(private val context: Context, private val listener: L
     @RequiresApi(Build.VERSION_CODES.TIRAMISU)
     private fun logRecognitionSupport(r: SpeechRecognizer, intent: Intent) {
         try {
-            r.checkRecognitionSupport(intent, Executors.newSingleThreadExecutor(), object : RecognitionSupportCallback {
+            r.checkRecognitionSupport(intent, DIRECT_EXECUTOR, object : RecognitionSupportCallback {
                 override fun onSupportResult(recognitionSupport: RecognitionSupport) {
                     Log.i(TAG, "recognition support: installedOnDevice=${recognitionSupport.installedOnDeviceLanguages}"
                             + ", pendingOnDevice=${recognitionSupport.pendingOnDeviceLanguages}"
@@ -371,6 +372,9 @@ class VoiceInputController(private val context: Context, private val listener: L
 
     companion object {
         private val TAG = VoiceInputController::class.simpleName
+
+        /** Runs the callback on the thread that delivers it; these callbacks only log. */
+        private val DIRECT_EXECUTOR = Executor { it.run() }
 
         /** What long-form dictation asks the engine to tolerate before ending an utterance. */
         private const val LONG_FORM_SILENCE_MS = 30_000L

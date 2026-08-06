@@ -40,6 +40,12 @@ class VoiceInputController(private val context: Context, private val listener: L
         fun onVoiceInputRms(rmsDb: Float)
         /** [error] is one of the SpeechRecognizer.ERROR_* constants. The session is over. */
         fun onVoiceInputError(error: Int)
+        /**
+         * The engine stopped listening. [recovering] is true while a new one is being built and
+         * dictation carries on by itself, false once rebuilding has been tried enough times and
+         * the session really is over.
+         */
+        fun onVoiceInputEngineWedged(recovering: Boolean)
         fun onVoiceInputStopped()
     }
 
@@ -94,6 +100,18 @@ class VoiceInputController(private val context: Context, private val listener: L
     /** Uptime of the last recognised text, for the long-form idle ceiling. */
     private var lastResultAt = 0L
 
+    /** Uptime of the last startListening, so an error can be timed against it. */
+    private var listenStartedAt = 0L
+
+    /** Errors that arrived too fast for the engine to have listened. Reset by any result. */
+    private var instantErrors = 0
+
+    /** Recognizer rebuilds this session, capped so a dead engine is not retried forever. */
+    private var recoveries = 0
+
+    /** True from scheduling a rebuild until it runs. The session stays active throughout. */
+    private var recoveryPending = false
+
     fun start(
         locale: Locale?, preferOffline: Boolean, autoPunctuation: Boolean, service: String?,
         longForm: Boolean = false
@@ -101,6 +119,8 @@ class VoiceInputController(private val context: Context, private val listener: L
         retriedOnline = false
         consecutiveErrors = 0
         clientErrors = 0
+        instantErrors = 0
+        recoveries = 0
         this.autoPunctuation = autoPunctuation
         this.serviceComponent = service?.takeIf { it.isNotEmpty() }
         this.longForm = longForm
@@ -155,6 +175,7 @@ class VoiceInputController(private val context: Context, private val listener: L
         isActive = true
         cancelling = false
         listener.onVoiceInputStarted()
+        listenStartedAt = SystemClock.uptimeMillis()
         r.startListening(intent)
     }
 
@@ -183,11 +204,46 @@ class VoiceInputController(private val context: Context, private val listener: L
             // stop() or cancel() may have landed while this was queued
             if (isActive && !cancelling) {
                 Log.i(TAG, "restarting listening (consecutiveErrors=$consecutiveErrors, clientErrors=$clientErrors)")
+                listenStartedAt = SystemClock.uptimeMillis()
                 r.startListening(intent)
             } else {
                 restartPending = false
             }
         }, delay)
+    }
+
+    /**
+     * Destroy the recognizer and build a new one after a pause, without ending the session. The
+     * recognition service runs out of process and can stop listening while still accepting calls;
+     * restarting it in place then just repeats the same instant failure, so the whole object goes.
+     *
+     * [isActive] deliberately stays true: from everywhere else this is one continuous session, so
+     * the microphone key still toggles it off and a key press still cancels it during the pause.
+     */
+    private fun recover() {
+        recoveries++
+        Log.w(TAG, "engine stopped listening, rebuilding recognizer" +
+                " (recovery $recoveries of ${VoiceSessionPolicy.MAX_RECOVERIES})")
+        instantErrors = 0
+        consecutiveErrors = 0
+        clientErrors = 0
+        restartPending = false
+        recoveryPending = true
+        handler.removeCallbacksAndMessages(null)
+        recognizer?.destroy()
+        recognizer = null
+        currentIntent = null
+        listener.onVoiceInputEngineWedged(true)
+        val locale = currentLocale
+        // the resolved choice, not the original preference — whichever engine we were on is the
+        // one to rebuild, and the on-device fallback has already been decided by this point
+        val onDevice = usingOnDevice
+        handler.postDelayed({
+            if (!recoveryPending) return@postDelayed // stopped or cancelled during the pause
+            recoveryPending = false
+            isActive = false // startInternal refuses to run while a session is marked active
+            startInternal(locale, onDevice)
+        }, VoiceSessionPolicy.RECOVERY_COOL_OFF_MS)
     }
 
     /** Stop listening but keep whatever has been recognised — final results still arrive. */
@@ -197,6 +253,7 @@ class VoiceInputController(private val context: Context, private val listener: L
         // clearing isActive ends the restart loop; the in-flight utterance still reports
         isActive = false
         restartPending = false
+        recoveryPending = false
         handler.removeCallbacksAndMessages(null)
         recognizer?.stopListening()
     }
@@ -208,6 +265,7 @@ class VoiceInputController(private val context: Context, private val listener: L
         cancelling = true
         isActive = false
         restartPending = false
+        recoveryPending = false
         handler.removeCallbacksAndMessages(null)
         recognizer?.cancel()
         release()
@@ -220,6 +278,7 @@ class VoiceInputController(private val context: Context, private val listener: L
      */
     fun release() {
         restartPending = false
+        recoveryPending = false
         handler.removeCallbacksAndMessages(null)
         recognizer?.destroy()
         recognizer = null
@@ -308,8 +367,11 @@ class VoiceInputController(private val context: Context, private val listener: L
         }
 
         override fun onError(error: Int) {
-            Log.w(TAG, "onError ${errorName(error)}")
+            val sinceListen = SystemClock.uptimeMillis() - listenStartedAt
+            Log.w(TAG, "onError ${errorName(error)} after ${sinceListen}ms")
             restartPending = false // this attempt is over either way
+            // counted before the decision, so the third instant error is the one that acts on it
+            if (VoiceSessionPolicy.isWedgedError(error, sinceListen)) instantErrors++ else instantErrors = 0
             val action = VoiceSessionPolicy.onError(
                 error = error,
                 cancelling = cancelling,
@@ -321,7 +383,9 @@ class VoiceInputController(private val context: Context, private val listener: L
                     if (longForm) VoiceSessionPolicy.NO_ERROR_CAP else VoiceSessionPolicy.MAX_CONSECUTIVE_ERRORS,
                 clientErrors = clientErrors,
                 msSinceLastResult =
-                    if (longForm) SystemClock.uptimeMillis() - lastResultAt else 0
+                    if (longForm) SystemClock.uptimeMillis() - lastResultAt else 0,
+                instantErrors = instantErrors,
+                recoveries = recoveries
             )
             if (action == VoiceSessionPolicy.ErrorAction.IGNORE) return
             if (action == VoiceSessionPolicy.ErrorAction.RESTART) {
@@ -331,7 +395,15 @@ class VoiceInputController(private val context: Context, private val listener: L
                 return
             }
 
+            if (action == VoiceSessionPolicy.ErrorAction.RECOVER) {
+                recover()
+                return
+            }
+
             val retryOnline = action == VoiceSessionPolicy.ErrorAction.RETRY_ONLINE
+            // a wedged engine is not the same failure as the error code says it is, and deserves
+            // its own message rather than "voice input unavailable"
+            val wedged = instantErrors >= VoiceSessionPolicy.WEDGE_ERROR_COUNT
             isActive = false
             release()
             // isOnDeviceRecognitionAvailable() reports true whenever the engine exists, even with
@@ -343,7 +415,7 @@ class VoiceInputController(private val context: Context, private val listener: L
                 startInternal(currentLocale, false)
                 return
             }
-            listener.onVoiceInputError(error)
+            if (wedged) listener.onVoiceInputEngineWedged(false) else listener.onVoiceInputError(error)
             // every terminal path ends with onVoiceInputStopped, so the IME has exactly one place
             // to close the composing span
             listener.onVoiceInputStopped()
@@ -355,6 +427,7 @@ class VoiceInputController(private val context: Context, private val listener: L
             if (cancelling) return
             consecutiveErrors = 0 // the engine is working; any earlier silence is forgiven
             clientErrors = 0
+            instantErrors = 0
             lastResultAt = SystemClock.uptimeMillis()
             if (text != null) listener.onVoiceInputFinal(text)
             if (isActive) {

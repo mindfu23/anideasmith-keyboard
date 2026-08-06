@@ -1640,6 +1640,28 @@ public class LatinIME extends InputMethodService implements
         }
 
         @Override
+        public void onVoiceInputEngineWedged(final boolean recovering) {
+            if (!recovering) {
+                // the session really is over, and the keyboard going quiet with no explanation is
+                // exactly what a bug in this feature looks like from the outside
+                showVoiceInputToast(R.string.voice_input_engine_stopped);
+                return;
+            }
+            Log.w(TAG, "speech engine stopped listening, rebuilding it");
+            // Settle what has been dictated so far: the rebuild takes a moment and a composing
+            // span left open across it would be replaced by the next partial rather than kept.
+            finishVoiceComposing();
+            // Deliberately not a toast. Dictation is still running, so anything that overlays the
+            // keyboard or steals attention would interrupt the thing it is reporting on. The space
+            // bar is already where this session says what it is doing, and it clears itself: the
+            // rebuilt session sets the label back to "Listening…"/"Dictation" a moment later.
+            // Only while the strip exists, since that is what clears the label again at the end.
+            if (mVoiceInputStrip != null) {
+                setDictationSpaceBarLabel(getString(R.string.voice_input_reconnecting));
+            }
+        }
+
+        @Override
         public void onVoiceInputStopped() {
             Log.i(TAG, "voice input stopped");
             finishVoiceComposing();

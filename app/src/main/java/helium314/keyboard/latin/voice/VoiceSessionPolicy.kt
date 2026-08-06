@@ -47,12 +47,30 @@ internal object VoiceSessionPolicy {
      */
     const val WRITE_SETTLE_MS = 500L
 
+    /**
+     * Below this, an error came back sooner than the engine could have opened the microphone, so
+     * it never listened. Measured: a healthy silence timeout answers in about five seconds, a
+     * wedged engine in under 150ms and a refused startListening in about two.
+     */
+    const val WEDGED_ERROR_MS = 150L
+
+    /** Instant errors in a row before the engine is treated as wedged rather than unlucky. */
+    const val WEDGE_ERROR_COUNT = 3
+
+    /** Pause before rebuilding, to let the recognition service drop the state it is stuck in. */
+    const val RECOVERY_COOL_OFF_MS = 1500L
+
+    /** Rebuilds per session before dictation gives up, so a dead engine cannot be retried forever. */
+    const val MAX_RECOVERIES = 2
+
     /** What to do when the recognizer reports an error. */
     enum class ErrorAction {
         /** The utterance was empty; listen again. */
         RESTART,
         /** On-device cannot serve this language; rebuild once against the general recognizer. */
         RETRY_ONLINE,
+        /** The engine has stopped listening; destroy it, pause, and build a new one. */
+        RECOVER,
         /** The session is over; report it. */
         TERMINAL,
         /** We are tearing down deliberately; say nothing. */
@@ -71,6 +89,17 @@ internal object VoiceSessionPolicy {
     fun isLanguageUnavailable(error: Int) =
         error == SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE || error == SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED
 
+    /**
+     * Whether this error means the engine answered without listening. Restricted to the errors a
+     * working engine also produces, so a genuinely fatal one (no permission, no network) is still
+     * read as fatal however fast it arrives.
+     *
+     * @param msSinceListenStart time from startListening to the error, not from the session start.
+     */
+    fun isWedgedError(error: Int, msSinceListenStart: Long) =
+        msSinceListenStart < WEDGED_ERROR_MS &&
+                (isRestartable(error) || error == SpeechRecognizer.ERROR_CLIENT)
+
     @JvmOverloads
     fun restartDelayMs(consecutiveErrors: Int, clientErrors: Int = 0): Long =
         (RESTART_BASE_DELAY_MS.toLong() * consecutiveErrors + CLIENT_RETRY_DELAY_MS * clientErrors)
@@ -86,11 +115,18 @@ internal object VoiceSessionPolicy {
         retriedOnline: Boolean,
         maxConsecutiveErrors: Int = MAX_CONSECUTIVE_ERRORS,
         clientErrors: Int = 0,
-        msSinceLastResult: Long = 0
+        msSinceLastResult: Long = 0,
+        instantErrors: Int = 0,
+        recoveries: Int = 0
     ): ErrorAction = when {
         cancelling -> ErrorAction.IGNORE
         // nothing recognised for a long time: the session has been forgotten, not paused
         isActive && msSinceLastResult >= LONG_FORM_IDLE_TIMEOUT_MS -> ErrorAction.TERMINAL
+        // The engine is answering faster than it could have listened. Restarting it in place only
+        // repeats the same instant failure, so rebuild it — and once rebuilding has been tried
+        // enough times, accept that nothing here will fix it.
+        isActive && instantErrors >= WEDGE_ERROR_COUNT && recoveries < MAX_RECOVERIES -> ErrorAction.RECOVER
+        isActive && instantErrors >= WEDGE_ERROR_COUNT -> ErrorAction.TERMINAL
         isActive && isRestartable(error) && consecutiveErrors < maxConsecutiveErrors -> ErrorAction.RESTART
         // transient: the engine was asked to listen again too soon, not a broken session
         isActive && error == SpeechRecognizer.ERROR_CLIENT && clientErrors < MAX_CLIENT_ERRORS -> ErrorAction.RESTART

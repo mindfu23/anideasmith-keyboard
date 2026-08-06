@@ -191,6 +191,75 @@ class VoiceSessionPolicyTest {
         assertEquals(VoiceSessionPolicy.MAX_RESTART_DELAY_MS, VoiceSessionPolicy.restartDelayMs(1000))
     }
 
+    // --- the engine that answers without listening --------------------------------------------
+
+    private fun onWedge(instantErrors: Int, recoveries: Int = 0) = VoiceSessionPolicy.onError(
+        error = SpeechRecognizer.ERROR_NO_MATCH, cancelling = false, isActive = true,
+        consecutiveErrors = 0, usingOnDevice = false, retriedOnline = false,
+        maxConsecutiveErrors = VoiceSessionPolicy.NO_ERROR_CAP,
+        instantErrors = instantErrors, recoveries = recoveries
+    )
+
+    @Test fun anErrorTooFastToHaveListenedIsWedged() {
+        // measured on a real session: a healthy silence timeout answers in about 5s, a wedged
+        // engine in about 100ms, and a refused startListening in about 2ms
+        assertTrue(VoiceSessionPolicy.isWedgedError(SpeechRecognizer.ERROR_NO_MATCH, 100))
+        assertTrue(VoiceSessionPolicy.isWedgedError(SpeechRecognizer.ERROR_CLIENT, 2))
+        assertFalse(VoiceSessionPolicy.isWedgedError(SpeechRecognizer.ERROR_NO_MATCH, 5100))
+    }
+
+    @Test fun aFatalErrorIsFatalHoweverFastItArrives() {
+        // rebuilding the engine cannot grant a permission or find a network
+        assertFalse(VoiceSessionPolicy.isWedgedError(SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS, 1))
+        assertFalse(VoiceSessionPolicy.isWedgedError(SpeechRecognizer.ERROR_NETWORK, 1))
+    }
+
+    @Test fun oneFastErrorIsNotYetAWedgedEngine() {
+        assertEquals(ErrorAction.RESTART, onWedge(instantErrors = 1))
+        assertEquals(ErrorAction.RESTART, onWedge(instantErrors = VoiceSessionPolicy.WEDGE_ERROR_COUNT - 1))
+    }
+
+    @Test fun aWedgedEngineIsRebuiltRatherThanRestarted() {
+        // restarting in place just repeats the same instant failure, as it did for ~20 rounds
+        // before the session died
+        assertEquals(ErrorAction.RECOVER, onWedge(instantErrors = VoiceSessionPolicy.WEDGE_ERROR_COUNT))
+    }
+
+    @Test fun rebuildingIsGivenUpOnEventually() {
+        // the engine degraded across a whole morning and no rebuild fixed it; retrying forever
+        // would hold the microphone open against a service that answers in 2ms
+        assertEquals(
+            ErrorAction.TERMINAL,
+            onWedge(instantErrors = VoiceSessionPolicy.WEDGE_ERROR_COUNT, recoveries = VoiceSessionPolicy.MAX_RECOVERIES)
+        )
+    }
+
+    @Test fun aWedgedEngineDoesNotOverrideStoppingOrIdleness() {
+        // a deliberate teardown still says nothing, and a forgotten session still expires
+        assertEquals(
+            ErrorAction.IGNORE,
+            VoiceSessionPolicy.onError(
+                error = SpeechRecognizer.ERROR_NO_MATCH, cancelling = true, isActive = true,
+                consecutiveErrors = 0, usingOnDevice = false, retriedOnline = false,
+                instantErrors = VoiceSessionPolicy.WEDGE_ERROR_COUNT)
+        )
+        assertEquals(
+            ErrorAction.TERMINAL,
+            VoiceSessionPolicy.onError(
+                error = SpeechRecognizer.ERROR_NO_MATCH, cancelling = false, isActive = true,
+                consecutiveErrors = 0, usingOnDevice = false, retriedOnline = false,
+                maxConsecutiveErrors = VoiceSessionPolicy.NO_ERROR_CAP,
+                msSinceLastResult = VoiceSessionPolicy.LONG_FORM_IDLE_TIMEOUT_MS,
+                instantErrors = VoiceSessionPolicy.WEDGE_ERROR_COUNT)
+        )
+    }
+
+    @Test fun coolOffIsLongerThanAnyOrdinaryRestart() {
+        // the point of the pause is to be unlike the retries that already failed
+        assertTrue(VoiceSessionPolicy.RECOVERY_COOL_OFF_MS > VoiceSessionPolicy.MAX_RESTART_DELAY_MS / 2)
+        assertTrue(VoiceSessionPolicy.WEDGED_ERROR_MS < VoiceSessionPolicy.MIN_RESTART_DELAY_MS * 2)
+    }
+
     // --- backoff -------------------------------------------------------------------------------
 
     @Test fun restartBacksOffAsFailuresAccumulate() {

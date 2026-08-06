@@ -999,6 +999,10 @@ New dictionary:
     <string name="voice_input_listening">Listening…</string>
     <!-- Shown in place of the suggestions while a long-form dictation session is running -->
     <string name="voice_input_listening_long_form">Dictation</string>
+    <!-- Shown on the space bar while a stalled recognition engine is being rebuilt -->
+    <string name="voice_input_reconnecting">Reconnecting…</string>
+    <!-- Shown when the recognition engine stopped responding and could not be revived -->
+    <string name="voice_input_engine_stopped">Dictation stopped: the speech engine stopped responding</string>
     <!-- Description of the button that ends dictation -->
     <string name="voice_input_stop">Stop dictation</string>
     <!-- Switch for engine-supplied punctuation and capitalisation while dictating -->

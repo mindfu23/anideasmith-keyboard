@@ -28,7 +28,7 @@ android {
         // LOCAL-ONLY: our own version line, ahead of upstream's. Bump when adding a toolbar key
         // or shipping a build — checkVersionUpgrade compares BuildConfig.VERSION_CODE with the
         // stored one and runs upgradeToolbarPrefs, which is how new keys reach existing installs.
-        versionCode = 4104
+        versionCode = 4105
         versionName = "4.0-anideasmith.4"
         ndk {
             abiFilters.clear()

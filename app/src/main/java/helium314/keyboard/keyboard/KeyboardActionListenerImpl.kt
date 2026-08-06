@@ -136,9 +136,16 @@ class KeyboardActionListenerImpl(private val latinIME: LatinIME, private val inp
             return
         val mkv = keyboardSwitcher.mainKeyboardView
 
+        // Shift is not one of the meta modifiers (see toMetaState) — it picks the shifted layout
+        // instead — so a held shift cannot reach the key event on its own. Tab is mapped here
+        // because shift+tab is its established reverse, and because tab is exactly the kind of
+        // cursor movement key the disabled general version below was meant for.
+        val code = if (primaryCode == KeyCode.TAB && mkv?.keyboard?.mId?.element?.isAlphabetShiftedManually == true)
+            KeyCode.TAB_BACK else primaryCode
+
         // checking if the character is a combining accent
-        val event = if (primaryCode in combiningRange) { // todo: should this be done later, maybe in inputLogic?
-            Event.createSoftwareDeadEvent(primaryCode, 0, metaState, mkv.getKeyX(x), mkv.getKeyY(y), null)
+        val event = if (code in combiningRange) { // todo: should this be done later, maybe in inputLogic?
+            Event.createSoftwareDeadEvent(code, 0, metaState, mkv.getKeyX(x), mkv.getKeyY(y), null)
         } else {
             // todo:
             //  setting meta shift should only be done for arrow and similar cursor movement keys
@@ -146,10 +153,10 @@ class KeyboardActionListenerImpl(private val latinIME: LatinIME, private val inp
 //            if (mkv.keyboard?.mId?.isAlphabetShiftedManually == true)
 //                Event.createSoftwareKeypressEvent(primaryCode, metaState or KeyEvent.META_SHIFT_ON, mkv.getKeyX(x), mkv.getKeyY(y), isKeyRepeat)
 //            else Event.createSoftwareKeypressEvent(primaryCode, metaState, mkv.getKeyX(x), mkv.getKeyY(y), isKeyRepeat)
-            Event.createSoftwareKeypressEvent(primaryCode, metaState, mkv.getKeyX(x), mkv.getKeyY(y), isKeyRepeat)
+            Event.createSoftwareKeypressEvent(code, metaState, mkv.getKeyX(x), mkv.getKeyY(y), isKeyRepeat)
         }
         latinIME.onEvent(event)
-        metaAfterCodeInput(primaryCode)
+        metaAfterCodeInput(code)
     }
 
     override fun onTextInput(text: String?) = latinIME.onTextInput(text)

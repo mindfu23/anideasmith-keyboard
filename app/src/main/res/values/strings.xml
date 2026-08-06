@@ -352,6 +352,8 @@
     <string name="voice" tools:keep="@string/voice">Voice input</string>
     <string name="voice_long_form" tools:keep="@string/voice_long_form">Long-form dictation</string>
     <string name="numpad" tools:keep="@string/numpad" translatable="false">@string/layout_numpad</string>
+    <!-- Name of the toolbar key that sends a tab -->
+    <string name="tab" tools:keep="@string/tab">Tab</string>
     <string name="dpad" tools:keep="@string/dpad" translatable="false">@string/layout_dpad</string>
     <string name="settings" tools:keep="@string/settings">Settings</string>
     <string name="select_all" tools:keep="@string/select_all" translatable="false">@android:string/selectAll</string>

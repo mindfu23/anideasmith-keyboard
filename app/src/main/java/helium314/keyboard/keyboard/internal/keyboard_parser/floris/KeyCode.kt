@@ -184,6 +184,7 @@ object KeyCode {
     const val BACKGROUND_GATHERING =         -10052 // will be useless after removal of gesture data gathering (keep for compatibility)
     const val BACKGROUND_GATHERING_TEMP_OFF =-10053 // will be useless after removal of gesture data gathering (keep for compatibility)
     const val DPAD =                      -10054
+    const val TAB_BACK =                  -10055 // tab with shift held, i.e. focus the previous field
 
     // Valid in popups and for toolbar key long press only
     const val KEY_REPEAT =                -11000
@@ -207,7 +208,7 @@ object KeyCode {
         // heliboard only
         SYMBOL_ALPHA, TOGGLE_ONE_HANDED_MODE, SWITCH_ONE_HANDED_MODE, SPLIT_LAYOUT, SHIFT_ENTER,
         ACTION_NEXT, ACTION_PREVIOUS, NOT_SPECIFIED, CLIPBOARD_COPY_ALL, WORD_LEFT, WORD_RIGHT, PAGE_UP,
-        PAGE_DOWN, META, TAB, ESCAPE, INSERT, SLEEP, MEDIA_PLAY, MEDIA_PAUSE, MEDIA_PLAY_PAUSE, MEDIA_NEXT,
+        PAGE_DOWN, META, TAB, TAB_BACK, ESCAPE, INSERT, SLEEP, MEDIA_PLAY, MEDIA_PAUSE, MEDIA_PLAY_PAUSE, MEDIA_NEXT,
         MEDIA_PREVIOUS, VOL_UP, VOL_DOWN, MUTE, F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12, BACK,
         TIMESTAMP, CTRL_LEFT, CTRL_RIGHT, ALT_LEFT, ALT_RIGHT, META_LEFT, META_RIGHT, SEND_INTENT_ONE, SEND_INTENT_TWO,
         SEND_INTENT_THREE, EMOJI_SEARCH, INLINE_EMOJI_SEARCH_DONE, META_LOCK,

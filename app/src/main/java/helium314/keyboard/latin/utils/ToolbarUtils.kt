@@ -99,6 +99,7 @@ fun getCodeForToolbarKey(key: ToolbarKey) = Settings.getInstance().getCustomTool
 }
 
 fun getCodeForToolbarKeyLongClick(key: ToolbarKey) = Settings.getInstance().getCustomToolbarLongpressCode(key) ?: when (key) {
+    TAB -> KeyCode.TAB_BACK
     CLIPBOARD -> KeyCode.CLIPBOARD_PASTE
     UNDO -> KeyCode.REDO
     REDO -> KeyCode.UNDO

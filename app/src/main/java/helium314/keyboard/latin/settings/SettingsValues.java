@@ -128,6 +128,8 @@ public class SettingsValues {
     public final boolean mUseInlineVoiceInput;
     public final boolean mVoiceInputAutoPunctuation;
     public final boolean mVoiceInputPreferOffline;
+    /** Whether the log may record dictated text. Off unless the user turns it on to report a bug. */
+    public final boolean mVoiceInputLogText;
     public final String mVoiceInputService;
     public final boolean mVoiceInputKeepTyping;
     public final boolean mWiderSpaceBar;
@@ -229,6 +231,7 @@ public class SettingsValues {
         mVoiceInputPreferOffline = prefs.getBoolean(Settings.PREF_VOICE_INPUT_PREFER_OFFLINE, Defaults.PREF_VOICE_INPUT_PREFER_OFFLINE);
         mVoiceInputService = prefs.getString(Settings.PREF_VOICE_INPUT_SERVICE, Defaults.PREF_VOICE_INPUT_SERVICE);
         mVoiceInputKeepTyping = prefs.getBoolean(Settings.PREF_VOICE_INPUT_KEEP_TYPING, Defaults.PREF_VOICE_INPUT_KEEP_TYPING);
+        mVoiceInputLogText = prefs.getBoolean(DebugSettings.PREF_LOG_DICTATED_TEXT, Defaults.PREF_LOG_DICTATED_TEXT);
         mWiderSpaceBar = prefs.getBoolean(Settings.PREF_WIDER_SPACE_BAR, Defaults.PREF_WIDER_SPACE_BAR);
         mAutoCorrectionEnabledPerUserSettings = prefs.getBoolean(Settings.PREF_AUTO_CORRECTION, Defaults.PREF_AUTO_CORRECTION);
         mAutoCorrectEnabled = mAutoCorrectionEnabledPerUserSettings

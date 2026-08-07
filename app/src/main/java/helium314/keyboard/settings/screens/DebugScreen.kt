@@ -19,6 +19,7 @@ import helium314.keyboard.latin.settings.DebugSettings
 import helium314.keyboard.latin.settings.Defaults
 import helium314.keyboard.latin.utils.prefs
 import helium314.keyboard.settings.Setting
+import helium314.keyboard.settings.SettingsWithoutKey
 import helium314.keyboard.settings.preferences.Preference
 import helium314.keyboard.settings.SearchSettingsScreen
 import helium314.keyboard.settings.preferences.SwitchPreference
@@ -40,6 +41,7 @@ fun DebugScreen(
         DebugSettings.PREF_SHOW_SUGGESTION_INFOS,
         DebugSettings.PREF_FORCE_NON_DISTINCT_MULTITOUCH,
         DebugSettings.PREF_SLIDING_KEY_INPUT_PREVIEW,
+        SettingsWithoutKey.DICTATION_LOGGING_NOTE,
         R.string.prefs_dump_dynamic_dicts
     ) + DictionaryFacilitator.DYNAMIC_DICTIONARY_TYPES.map { DebugSettings.PREF_KEY_DUMP_DICT_PREFIX + it }
     SearchSettingsScreen(
@@ -84,6 +86,12 @@ private fun createDebugSettings(context: Context) = listOf(
             if (!it) prefs.edit { putBoolean(DebugSettings.PREF_SHOW_SUGGESTION_INFOS, false) }
             needsRestart = true
         }
+    },
+    // A signpost, not a switch: the option itself sits next to Save log, where it is useful.
+    Setting(context, SettingsWithoutKey.DICTATION_LOGGING_NOTE,
+        R.string.prefs_dictation_logging_note, R.string.prefs_dictation_logging_note_summary
+    ) {
+        Preference(name = it.title, description = it.description, onClick = { })
     },
     Setting(context, DebugSettings.PREF_SHOW_SUGGESTION_INFOS, R.string.prefs_show_suggestion_infos) {
         SwitchPreference(it, Defaults.PREF_SHOW_SUGGESTION_INFOS) { KeyboardSwitcher.getInstance().setThemeNeedsReload() }

@@ -145,13 +145,14 @@ public class LatinIME extends InputMethodService implements
     final InputLogic mInputLogic = new InputLogic(this, this, mDictionaryFacilitator);
     // created on first use, so the recognizer is never bound unless the user enables the feature
     @Nullable private VoiceInputController mVoiceInputController;
-    // true while a dictation composing span of ours is on screen
-    private boolean mVoiceInputComposing = false;
     // whether the current dictation session produced any text at all
     private boolean mVoiceInputGotResults = false;
     // when we last wrote dictated text, so echoes of our own writes are not read as the user
     // moving the caret. SystemClock.uptimeMillis, not wall clock.
     private long mVoiceInputLastWrite = 0;
+    // what this dictation session has committed, so text the engine re-sends can be recognised as a
+    // repeat rather than appended. Emptied between sessions, never persisted.
+    @NonNull private final StringBuilder mVoiceInputCommitted = new StringBuilder();
     // the compact row shown in place of the suggestions, non-null only while dictating
     @Nullable private VoiceInputStrip mVoiceInputStrip;
 
@@ -1525,13 +1526,42 @@ public class LatinIME extends InputMethodService implements
     }
 
     /**
-     * Ends our composing span, keeping whatever has been dictated so far. Never deletes it — a
-     * cancelled dictation still leaves the user the words they already said.
+     * A labelled piece of dictated text for the log, or nothing at all unless the user has asked
+     * for it. Speech is the most private thing this keyboard handles, so it stays out of the log
+     * by default; the switch sits next to Save log for whoever is diagnosing wrong or repeated text.
+     */
+    @NonNull
+    private String dictationText(@NonNull final String label, @NonNull final String text) {
+        if (!mSettings.getCurrent().mVoiceInputLogText) return "";
+        return ", " + label + "=[" + text + "]";
+    }
+
+    /** The end of the committed text, which is all that a repeat can overlap. */
+    @NonNull
+    private String tailOf(@NonNull final CharSequence committed) {
+        final int from = Math.max(0, committed.length() - VoiceSessionPolicy.COMMITTED_TAIL_WINDOW);
+        return committed.subSequence(from, committed.length()).toString();
+    }
+
+    /**
+     * The part of dictated text this session has not already committed. The on-device engine keeps
+     * re-sending what it has sent before, and a finalised segment can no longer be replaced, so
+     * without this the repeat is appended. See VoiceSessionPolicy.newTextOffset.
+     */
+    @NonNull
+    private String newVoiceText(@NonNull final String text) {
+        final int offset = VoiceSessionPolicy.INSTANCE.newTextOffset(mVoiceInputCommitted.toString(), text);
+        return offset >= text.length() ? "" : text.substring(offset);
+    }
+
+    /**
+     * Settle the dictation preview so typing, a cursor move or the end of the session does not run
+     * into it. Nothing is committed here: what has not been finalised was never written to the text
+     * field, so there is nothing in the document to keep or delete. Words already dictated stay,
+     * which is what a cancelled dictation should leave behind.
      */
     private void finishVoiceComposing() {
-        if (!mVoiceInputComposing) return;
-        mVoiceInputComposing = false;
-        mInputLogic.mConnection.finishComposingText();
+        if (mVoiceInputStrip != null) mVoiceInputStrip.clearPartial();
     }
 
     /**
@@ -1561,41 +1591,60 @@ public class LatinIME extends InputMethodService implements
         @Override
         public void onVoiceInputStarted() {
             Log.i(TAG, "voice input started");
+            mVoiceInputCommitted.setLength(0);
             showVoiceInputStrip();
         }
 
         @Override
         public void onVoiceInputPartial(@NonNull final String text) {
-            if (text.isEmpty()) return;
-            mVoiceInputComposing = true;
-            // as a composing span, so the whole partial is replaced by the next one instead of
-            // being appended to, and so the app shows it as provisional
-            mVoiceInputLastWrite = SystemClock.uptimeMillis();
-            final boolean set = mInputLogic.mConnection.setComposingText(text, 1);
+            // Deliberately not written to the text field. A partial can only go there as a
+            // composing span, and in a segmented session the engine's partials run past the
+            // segment boundary into the next sentence — so the final that follows is *shorter*
+            // than the span and has to shrink it. Obsidian keeps the discarded tail whichever way
+            // that is asked for (setComposingText with shorter text, setComposingText("") then
+            // finishComposingText, or commitText), and the next partial then writes those words
+            // again. The preview belongs somewhere the engine is free to revise it.
+            final String fresh = newVoiceText(text);
+            if (mVoiceInputStrip != null) mVoiceInputStrip.onPartial(fresh);
             if (DebugFlags.DEBUG_ENABLED) {
-                // never the text itself — that is the user's speech
-                Log.i(TAG, "voice partial: " + text.length() + " chars, connected="
-                        + mInputLogic.mConnection.isConnected() + ", set=" + set);
+                Log.i(TAG, "voice partial: " + fresh.length() + " of " + text.length()
+                        + " chars, preview only" + dictationText("engine", text) + dictationText("shown", fresh));
             }
         }
 
         @Override
         public void onVoiceInputFinal(@NonNull final String text) {
             final RichInputConnection connection = mInputLogic.mConnection;
+            final String fresh = newVoiceText(text);
             mVoiceInputLastWrite = SystemClock.uptimeMillis();
-            Log.i(TAG, "voice final: " + text.length() + " chars, connected=" + connection.isConnected());
+            Log.i(TAG, "voice final: " + fresh.length() + " of " + text.length()
+                    + " chars, connected=" + connection.isConnected()
+                    + dictationText("engine", text) + dictationText("wrote", fresh)
+                    + dictationText("committedTail", tailOf(mVoiceInputCommitted)));
             mVoiceInputGotResults = true;
             connection.beginBatchEdit();
-            if (!text.isEmpty()) {
-                connection.setComposingText(text, 1);
+            // A plain insert: nothing provisional was ever written, so there is no span to replace.
+            if (!fresh.isEmpty()) {
+                connection.commitText(fresh, 1);
             }
-            connection.finishComposingText();
-            mVoiceInputComposing = false;
             // so the next utterance, or typing, does not run into this one
-            if (!text.isEmpty() && !text.endsWith(" ")) {
+            final boolean spaced = !fresh.isEmpty() && !fresh.endsWith(" ");
+            if (spaced) {
                 connection.commitText(" ", 1);
             }
             connection.endBatchEdit();
+            if (mVoiceInputStrip != null) mVoiceInputStrip.clearPartial();
+            // exactly what reached the field, so the next comparison matches what the user can see
+            if (!fresh.isEmpty()) {
+                mVoiceInputCommitted.append(fresh);
+                if (spaced) mVoiceInputCommitted.append(' ');
+            }
+            if (DebugFlags.DEBUG_ENABLED && mSettings.getCurrent().mVoiceInputLogText) {
+                // what the editor actually holds, rather than what we meant to put there. The two
+                // came apart once already, and nothing else tells them apart.
+                final CharSequence actual = connection.getTextBeforeCursor(140, 0);
+                Log.i(TAG, "field now ends" + dictationText("actual", actual == null ? "<null>" : actual.toString()));
+            }
         }
 
         @Override

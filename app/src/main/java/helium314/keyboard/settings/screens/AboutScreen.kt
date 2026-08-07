@@ -35,6 +35,7 @@ import helium314.keyboard.settings.SettingsContainer
 import helium314.keyboard.settings.SettingsWithoutKey
 import helium314.keyboard.settings.Setting
 import helium314.keyboard.settings.preferences.Preference
+import helium314.keyboard.settings.preferences.SwitchPreference
 import helium314.keyboard.settings.SearchSettingsScreen
 import helium314.keyboard.settings.SettingsActivity
 import helium314.keyboard.latin.utils.Theme
@@ -59,6 +60,7 @@ fun AboutScreen(
         SettingsWithoutKey.COMMUNITY_LINKS,
         SettingsWithoutKey.GITHUB,
         SettingsWithoutKey.SAVE_LOG,
+        DebugSettings.PREF_LOG_DICTATED_TEXT,
     )
     SearchSettingsScreen(
         onClickBack = onClickBack,
@@ -173,6 +175,13 @@ fun createAboutSettings(context: Context) = listOf(
             },
             icon = R.drawable.ic_settings_about_github
         )
+    },
+    // Next to the log rather than in the debug screen: it changes what the log contains, not how
+    // the keyboard behaves, and the person who needs it is looking at the log when they need it.
+    Setting(context, DebugSettings.PREF_LOG_DICTATED_TEXT,
+        R.string.log_dictated_text, R.string.log_dictated_text_summary
+    ) {
+        SwitchPreference(it, Defaults.PREF_LOG_DICTATED_TEXT)
     },
     Setting(context, SettingsWithoutKey.SAVE_LOG, R.string.save_log) { setting ->
         val ctx = LocalContext.current

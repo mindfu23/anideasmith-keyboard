@@ -8,7 +8,7 @@
     android:background="@drawable/clipboard_suggestion_background"
     android:gravity="center"
     android:paddingEnd="12dp"
-    android:layout_width="wrap_content"
+    android:layout_width="match_parent"
     android:layout_height="match_parent"
     tools:ignore="RtlSymmetry">
     <ImageView
@@ -20,6 +20,21 @@
         android:paddingVertical="6dp"
         android:adjustViewBounds="true"
         android:scaleType="centerInside"
+        android:importantForAccessibility="no" />
+    <!-- The words heard so far. Provisional text lives here rather than in the text field: the
+         engine keeps revising it, and asking an editor to replace a composing span it has already
+         grown is unreliable. Weighted so it takes the space left over and never pushes the stop
+         button off the row. -->
+    <TextView
+        android:id="@+id/voice_input_suggestion_text"
+        android:layout_width="0dp"
+        android:layout_weight="1"
+        android:layout_height="wrap_content"
+        android:paddingStart="4dp"
+        android:paddingEnd="6dp"
+        android:maxLines="1"
+        android:ellipsize="start"
+        android:textSize="14sp"
         android:importantForAccessibility="no" />
     <ImageView
         android:id="@+id/voice_input_suggestion_stop"

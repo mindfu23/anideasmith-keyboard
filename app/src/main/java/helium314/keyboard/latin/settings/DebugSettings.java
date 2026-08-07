@@ -17,6 +17,12 @@ public final class DebugSettings {
     public static final String PREF_KEY_DUMP_DICT_PREFIX = "dump_dictionaries";
 
     public static final String PREF_SHOW_SUGGESTION_INFOS = "show_suggestion_infos";
+    /**
+     * Whether the saved log may contain dictated text. Off by default and offered next to the log
+     * itself rather than here, because it changes what the log contains rather than how the
+     * keyboard behaves. Only useful for diagnosing dictation writing the wrong text.
+     */
+    public static final String PREF_LOG_DICTATED_TEXT = "log_dictated_text";
     private DebugSettings() {
         // This class is not publicly instantiable.
     }

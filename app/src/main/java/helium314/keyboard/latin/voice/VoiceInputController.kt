@@ -112,6 +112,12 @@ class VoiceInputController(private val context: Context, private val listener: L
     /** True from scheduling a rebuild until it runs. The session stays active throughout. */
     private var recoveryPending = false
 
+    /**
+     * True once the engine has answered with a segment, which is the only proof that it honoured
+     * the segmented-session request. Until then the restart loop is still the live mechanism.
+     */
+    private var segmented = false
+
     fun start(
         locale: Locale?, preferOffline: Boolean, autoPunctuation: Boolean, service: String?,
         longForm: Boolean = false
@@ -121,6 +127,7 @@ class VoiceInputController(private val context: Context, private val listener: L
         clientErrors = 0
         instantErrors = 0
         recoveries = 0
+        segmented = false
         this.autoPunctuation = autoPunctuation
         this.serviceComponent = service?.takeIf { it.isNotEmpty() }
         this.longForm = longForm
@@ -303,8 +310,19 @@ class VoiceInputController(private val context: Context, private val listener: L
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 putExtra(RecognizerIntent.EXTRA_MASK_OFFENSIVE_WORDS, false)
-                if (autoPunctuation)
+                // Google's engine rejects this outright unless EXTRA_PREFER_OFFLINE is set
+                // ("EXTRA_ENABLE_FORMATTING can't be used when EXTRA_PREFER_OFFLINE is false"),
+                // so asking anyway only earns an error in its log.
+                if (autoPunctuation && preferOffline)
                     putExtra(RecognizerIntent.EXTRA_ENABLE_FORMATTING, RecognizerIntent.FORMATTING_OPTIMIZE_QUALITY)
+                // One session that segments itself, rather than a session per utterance. See
+                // VoiceSessionPolicy.useSegmentedSession: this is what silences the earcons.
+                if (VoiceSessionPolicy.useSegmentedSession(Build.VERSION.SDK_INT)) {
+                    putExtra(RecognizerIntent.EXTRA_SEGMENTED_SESSION,
+                        RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS)
+                    putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS,
+                        VoiceSessionPolicy.SEGMENTED_SILENCE_MS)
+                }
             }
         }
 
@@ -425,6 +443,13 @@ class VoiceInputController(private val context: Context, private val listener: L
             val text = firstResult(results)
             Log.i(TAG, "onResults, ${text?.length ?: -1} chars")
             if (cancelling) return
+            // In a segmented session every utterance has already arrived through onSegmentResults;
+            // a trailing onResults would repeat the last one. Only the session end matters here,
+            // and onEndOfSegmentedSession reports that.
+            if (segmented) {
+                Log.i(TAG, "ignoring onResults, segment results are driving this session")
+                return
+            }
             consecutiveErrors = 0 // the engine is working; any earlier silence is forgiven
             clientErrors = 0
             instantErrors = 0
@@ -433,6 +458,42 @@ class VoiceInputController(private val context: Context, private val listener: L
             if (isActive) {
                 restartListening() // keep dictating until the user stops
             } else {
+                release()
+                listener.onVoiceInputStopped()
+            }
+        }
+
+        /**
+         * One utterance inside a continuous session. No restart follows: the engine is still
+         * listening, which is the whole point — no teardown means no earcon.
+         */
+        override fun onSegmentResults(segmentResults: Bundle) {
+            val text = firstResult(segmentResults)
+            Log.i(TAG, "onSegmentResults, ${text?.length ?: -1} chars")
+            if (cancelling) return
+            if (!segmented) {
+                segmented = true
+                Log.i(TAG, "engine honoured the segmented session; restart loop stands down")
+            }
+            consecutiveErrors = 0
+            clientErrors = 0
+            instantErrors = 0
+            lastResultAt = SystemClock.uptimeMillis()
+            if (text != null) listener.onVoiceInputFinal(text)
+        }
+
+        /**
+         * The continuous session ended by itself, after a silence long enough to mean "finished".
+         * If the user has not stopped dictation, open another one — that costs one earcon, but only
+         * after [VoiceSessionPolicy.SEGMENTED_SILENCE_MS] of quiet rather than after each sentence.
+         */
+        override fun onEndOfSegmentedSession() {
+            Log.i(TAG, "onEndOfSegmentedSession (active=$isActive)")
+            if (cancelling) return
+            if (isActive && longForm) {
+                restartListening()
+            } else {
+                isActive = false
                 release()
                 listener.onVoiceInputStopped()
             }

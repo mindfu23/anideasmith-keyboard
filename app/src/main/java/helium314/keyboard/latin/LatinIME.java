@@ -69,6 +69,7 @@ import helium314.keyboard.latin.define.DebugFlags;
 import helium314.keyboard.latin.inputlogic.InputLogic;
 import helium314.keyboard.latin.personalization.PersonalizationHelper;
 import helium314.keyboard.latin.permissions.PermissionsUtil;
+import helium314.keyboard.latin.settings.DebugSettings;
 import helium314.keyboard.latin.settings.Settings;
 import helium314.keyboard.latin.settings.SettingsValues;
 import helium314.keyboard.latin.suggestions.SuggestionStripView;
@@ -566,6 +567,11 @@ public class LatinIME extends InputMethodService implements
 
     @Override
     public void onCreate() {
+        // Recording speech in the log is for reproducing a fault, not a state to be left in. Off
+        // again whenever the keyboard starts, so forgetting to turn it back off costs one session
+        // rather than every session after it. Cleared before the settings listener starts, so this
+        // is the value everything else reads.
+        KtxKt.prefs(this).edit().putBoolean(DebugSettings.PREF_LOG_DICTATED_TEXT, false).apply();
         mSettings.startListener();
         KeyboardIconsSet.Companion.getInstance().loadIcons(this);
         mRichImm = RichInputMethodManager.getInstance();

@@ -889,6 +889,10 @@ public final class InputLogic {
                 // {@link KeyboardSwitcher#onEvent(Event)}, or {@link #onPressKey(int,int,boolean)} and {@link #onReleaseKey(int,boolean)}.
                 // We need to switch to the shortcut IME. This is handled by LatinIME since the
                 // input logic has no business with IME switching.
+            case KeyCode.VOICE_INPUT_LONG_FORM:
+                // likewise already acted on by LatinIME.onEvent, which starts the dictation. Without
+                // this it reaches the default branch as an unknown event: harmless in a normal build
+                // beyond a logged error, but debug builds turn that into a crash.
             case KeyCode.EMOJI, KeyCode.TOGGLE_ONE_HANDED_MODE, KeyCode.SWITCH_ONE_HANDED_MODE, KeyCode.TOGGLE_FLOATING_WINDOW,
                  KeyCode.KEY_REPEAT: // can be configured on main layout using !code/-11000, and we shouldn't crash on this in debug mode
                 break;

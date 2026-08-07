@@ -1544,6 +1544,37 @@ public class LatinIME extends InputMethodService implements
         return ", " + label + "=[" + text + "]";
     }
 
+    /** How far past the expected end of our text to look for it, in characters. */
+    private static final int STALE_SEARCH_SLACK = 8;
+
+    /**
+     * How many characters at the end of the field are no longer wanted, given that everything up to
+     * [agreed] of [text] should stay.
+     *
+     * Answered by looking at the field rather than at our own record of what was written there,
+     * because the two drift: the app removes a sentence-final "." or "?" when one lands at the end
+     * of a line, and after that our record is a character longer than reality. Deleting by our own
+     * count would then take a character of real text with it.
+     *
+     * @return the number of characters to remove, or -1 if the kept text cannot be found at all, in
+     *   which case nothing should be deleted — text nobody dictated is not ours to remove.
+     */
+    private int staleInField(@NonNull final RichInputConnection connection,
+            @NonNull final String text, final int agreed, final int limit) {
+        final String keep = text.substring(0, Math.min(agreed, text.length()));
+        final CharSequence tail = connection.getTextBeforeCursor(keep.length() + limit, 0);
+        if (tail == null) return -1;
+        final String seen = tail.toString();
+        // smallest first: the nearest match is the end of what we wrote, a further one would be an
+        // earlier repetition of the same words
+        for (int remove = 0; remove <= limit; remove++) {
+            final int from = seen.length() - remove - keep.length();
+            if (from < 0) break;
+            if (seen.startsWith(keep, from)) return remove;
+        }
+        return -1;
+    }
+
     /**
      * Put [text] on screen as the engine's latest word on this utterance, writing only what changed.
      *
@@ -1570,13 +1601,18 @@ public class LatinIME extends InputMethodService implements
         // when the field still ends with exactly what we put there. A stray keystroke or a cursor
         // move makes that false; then nothing is removed and this becomes a plain append.
         if (stale > 0) {
-            final CharSequence before = connection.getTextBeforeCursor(onScreen.length(), 0);
-            if (before == null || !onScreen.contentEquals(before)) {
-                // Only the delete is unsafe. Keeping `agreed` still writes just the new words; it
-                // is dropping it that turns a correction into a repeat of the whole phrase, which
-                // was every duplication in the previous build.
-                Log.i(TAG, "field no longer ends with our dictation, skipping the correction");
+            // How much to remove is derived from the field, not from our own record of it. The app
+            // deletes a sentence-final "." or "?" of its own accord when one lands at the end of a
+            // line -- seen eight times in one session, never after a letter -- and from then on the
+            // two disagree by a character. Trusting our record either removes the wrong character or
+            // refuses and leaves the stale words on screen.
+            final int inField = staleInField(connection, text, agreed, stale + STALE_SEARCH_SLACK);
+            if (inField < 0) {
+                Log.i(TAG, "not deleting: cannot find where our text ends in the field"
+                        + dictationText("keeping", text.substring(0, agreed)));
                 stale = 0;
+            } else {
+                stale = inField;
             }
         }
         final String addition = text.substring(Math.min(agreed, text.length()));

@@ -268,73 +268,53 @@ class VoiceSessionPolicyTest {
         assertEquals(VoiceSessionPolicy.MIN_RESTART_DELAY_MS, VoiceSessionPolicy.restartDelayMs(-1)) // never negative
     }
 
-    // --- text the engine re-sends ---------------------------------------------------------------
-    // The fixtures are real duplications captured on the S24 with the on-device engine, where the
-    // committed text and the following segment both reached the screen.
+    // --- streaming into the field ------------------------------------------------------------
+    // The engine extends rather than revises: 239 partial-to-partial transitions in one measured
+    // session were pure extensions, none rewrote an earlier word. Punctuation is the exception, and
+    // only when an utterance is finalised. Fixtures are real pairs captured on the S24.
 
-    private fun added(committed: String, next: String) =
-        next.substring(VoiceSessionPolicy.newTextOffset(committed, next).coerceAtMost(next.length))
+    private fun agreed(written: String, latest: String) =
+        VoiceSessionPolicy.agreedPrefixLength(written, latest)
 
-    @Test fun repeatWithRevisedPunctuationIsNotCommittedTwice() {
-        assertEquals(
-            "Period.",
-            added(
-                "Engaging in some new dictation to see how this is working? ",
-                "Engaging in some new dictation to see how this is working. Period."
-            )
-        )
+    @Test fun anExtensionAddsOnlyTheNewWords() {
+        val written = " Oh, I get it. This is only being"
+        val latest = " Oh, I get it. This is only being written afterwards"
+        assertEquals(written.length, agreed(written, latest))
+        assertEquals(" written afterwards", latest.substring(agreed(written, latest)))
     }
 
-    @Test fun repeatIsMatchedAgainstTheWholeCommittedTail() {
-        // the point of the fix: the comparison is against everything committed this session, not
-        // merely the segment before, so an earlier boundary still matches
-        assertEquals(
-            "Period.",
-            added(
-                "Okay, comma. Punctuation is being inserted by the typing. ",
-                "Punctuation is being inserted by the typing Period."
-            )
-        )
+    @Test fun nothingToDoWhenTheEngineRepeatsItself() {
+        val text = " More text."
+        assertEquals(text.length, agreed(text, text))
+        assertEquals("", text.substring(agreed(text, text)))
     }
 
-    @Test fun extendedRepeatKeepsOnlyTheExtension() {
-        assertEquals(
-            "Maybe some beginnings of sentences.",
-            added("I am missing. ", "I am missing, Maybe some beginnings of sentences.")
-        )
+    @Test fun aPunctuationRevisionRewritesOnlyTheTail() {
+        // the spoken word "period" became "." when the utterance was finalised
+        val written = " Okay, that pause happened period now."
+        val latest = " Okay, that pause happened."
+        val keep = agreed(written, latest)
+        assertEquals(" Okay, that pause happened", written.substring(0, keep))
+        assertEquals(" period now.", written.substring(keep))
+        assertEquals(".", latest.substring(keep))
     }
 
-    @Test fun repeatThatAddsNothingYieldsNothing() {
-        assertEquals("", added("If I hold off And pause. ", "If I hold off And pause."))
+    @Test fun anOvershootingPartialAgreesUpToTheFinal() {
+        // the partial had run into the next sentence; the final covers only the first
+        val written = " It would take me a few sentences. This is the short"
+        val latest = " It would take me a few sentences."
+        assertEquals(latest.length, agreed(written, latest))
+        assertEquals(" This is the short", written.substring(latest.length))
     }
 
-    @Test fun unrelatedTextIsKeptWhole() {
-        val next = "Now, trying tab."
-        assertEquals(0, VoiceSessionPolicy.newTextOffset("Here is more tab. ", next))
-        assertEquals(next, added("Here is more tab. ", next))
-    }
-
-    @Test fun firstTextOfASessionIsKeptWhole() {
-        val next = "Okay, comma."
-        assertEquals(0, VoiceSessionPolicy.newTextOffset("", next))
-        assertEquals(next, added("", next))
-    }
-
-    @Test fun shortGenuineRepetitionSurvives() {
-        // saying a short word twice must not be swallowed: the overlap is under the floor
-        assertEquals("No, I meant it.", added("No. ", "No, I meant it."))
-        assertEquals(0, VoiceSessionPolicy.newTextOffset("go on", "go on then"))
-    }
-
-    @Test fun aMatchFurtherBackThanTheWindowIsIgnored() {
-        val old = "This sentence was committed a long time ago. "
-        val next = "This sentence was committed a long time ago."
-        assertEquals(next, added(old + "x".repeat(VoiceSessionPolicy.COMMITTED_TAIL_WINDOW), next))
+    @Test fun freshTextAgreesWithNothing() {
+        assertEquals(0, agreed("", "Okay, comma."))
+        assertEquals(0, agreed("Something else entirely.", "Okay, comma."))
     }
 
     @Test fun emptyTextIsSafe() {
-        assertEquals(0, VoiceSessionPolicy.newTextOffset("", ""))
-        assertEquals(0, VoiceSessionPolicy.newTextOffset("something", ""))
-        assertEquals(0, VoiceSessionPolicy.newTextOffset("...", "!!!")) // nothing normalisable
+        assertEquals(0, agreed("", ""))
+        assertEquals(0, agreed("written", ""))
+        assertEquals(0, agreed("", "latest"))
     }
 }

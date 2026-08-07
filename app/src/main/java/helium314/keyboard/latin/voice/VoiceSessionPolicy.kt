@@ -101,59 +101,20 @@ internal object VoiceSessionPolicy {
     fun useSegmentedSession(sdkInt: Int) = sdkInt >= Build.VERSION_CODES.TIRAMISU
 
     /**
-     * Normalised characters that must repeat before text is treated as the engine re-sending what
-     * it already sent. Long enough that saying a short word twice ("no, no") survives.
-     */
-    const val MIN_RESTATEMENT_OVERLAP = 10
-
-    /**
-     * How far back into the committed text to look for the overlap. The engine only ever restates
-     * from the end of what it last sent, so a match further back than this is a coincidence.
-     */
-    const val COMMITTED_TAIL_WINDOW = 300
-
-    /**
-     * Where genuinely new text starts in [next], given what this session has already committed.
+     * How much of [written] the engine's [latest] text still agrees with.
      *
-     * Google's on-device engine (SODA) does not reset its partial buffer when a segment is
-     * finalised: measured across three configurations, partials reset after every segment on the
-     * network recogniser (14 of 14) and never on-device (0 of 47, and 0 of 22 through
-     * `createOnDeviceSpeechRecognizer`). Because `finishComposingText` closes the span at each
-     * segment, text the engine repeats can no longer replace what is on screen — it can only be
-     * appended, which is what the user sees as duplication.
-     *
-     * This is not a guess about the user's speech: the engine is re-sending its own earlier output,
-     * so the overlap is real. Matching ignores case, spacing and punctuation, because a restatement
-     * revises all three — "…here so far." comes back as "…here. So far,".
-     *
-     * Returns `next.length` when it adds nothing, and 0 when it is unrelated to what came before.
+     * Dictation is streamed into the field a few words at a time, which is only safe because the
+     * engine does not take words back: measured over one session, 239 partial-to-partial
+     * transitions were pure extensions and none revised an earlier word. What it does revise is
+     * punctuation, and only on finalising an utterance — a spoken "period" becomes "." in 6 of 29
+     * finals. So what is on screen usually needs nothing done to it, and when it does, only the
+     * tail past this point has to be rewritten.
      */
-    fun newTextOffset(committed: String, next: String): Int {
-        if (committed.isEmpty() || next.isEmpty()) return 0
-        val (tail, _) = normalise(committed.takeLast(COMMITTED_TAIL_WINDOW))
-        val (new, newIndex) = normalise(next)
-        if (tail.isEmpty() || new.isEmpty()) return 0
-        // longest first: the engine restates as much as it still holds, and a shorter coincidental
-        // match would cut into words the user has not seen yet
-        for (k in minOf(tail.length, new.length) downTo MIN_RESTATEMENT_OVERLAP) {
-            if (tail.regionMatches(tail.length - k, new, 0, k))
-                return if (k == new.length) next.length else newIndex[k]
-        }
-        return 0
-    }
-
-    /** Letters and digits only, lowercased, with each kept character's index in the original. */
-    private fun normalise(s: String): Pair<String, IntArray> {
-        val out = StringBuilder(s.length)
-        val index = IntArray(s.length)
-        for (i in s.indices) {
-            val c = s[i]
-            if (c.isLetterOrDigit()) {
-                index[out.length] = i
-                out.append(c.lowercaseChar())
-            }
-        }
-        return out.toString() to index
+    fun agreedPrefixLength(written: String, latest: String): Int {
+        val max = minOf(written.length, latest.length)
+        var i = 0
+        while (i < max && written[i] == latest[i]) i++
+        return i
     }
 
     /** Errors meaning "this utterance had nothing in it", not "dictation is over". */

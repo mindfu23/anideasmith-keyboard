@@ -267,4 +267,74 @@ class VoiceSessionPolicyTest {
         assertTrue(VoiceSessionPolicy.restartDelayMs(2) > VoiceSessionPolicy.restartDelayMs(1))
         assertEquals(VoiceSessionPolicy.MIN_RESTART_DELAY_MS, VoiceSessionPolicy.restartDelayMs(-1)) // never negative
     }
+
+    // --- text the engine re-sends ---------------------------------------------------------------
+    // The fixtures are real duplications captured on the S24 with the on-device engine, where the
+    // committed text and the following segment both reached the screen.
+
+    private fun added(committed: String, next: String) =
+        next.substring(VoiceSessionPolicy.newTextOffset(committed, next).coerceAtMost(next.length))
+
+    @Test fun repeatWithRevisedPunctuationIsNotCommittedTwice() {
+        assertEquals(
+            "Period.",
+            added(
+                "Engaging in some new dictation to see how this is working? ",
+                "Engaging in some new dictation to see how this is working. Period."
+            )
+        )
+    }
+
+    @Test fun repeatIsMatchedAgainstTheWholeCommittedTail() {
+        // the point of the fix: the comparison is against everything committed this session, not
+        // merely the segment before, so an earlier boundary still matches
+        assertEquals(
+            "Period.",
+            added(
+                "Okay, comma. Punctuation is being inserted by the typing. ",
+                "Punctuation is being inserted by the typing Period."
+            )
+        )
+    }
+
+    @Test fun extendedRepeatKeepsOnlyTheExtension() {
+        assertEquals(
+            "Maybe some beginnings of sentences.",
+            added("I am missing. ", "I am missing, Maybe some beginnings of sentences.")
+        )
+    }
+
+    @Test fun repeatThatAddsNothingYieldsNothing() {
+        assertEquals("", added("If I hold off And pause. ", "If I hold off And pause."))
+    }
+
+    @Test fun unrelatedTextIsKeptWhole() {
+        val next = "Now, trying tab."
+        assertEquals(0, VoiceSessionPolicy.newTextOffset("Here is more tab. ", next))
+        assertEquals(next, added("Here is more tab. ", next))
+    }
+
+    @Test fun firstTextOfASessionIsKeptWhole() {
+        val next = "Okay, comma."
+        assertEquals(0, VoiceSessionPolicy.newTextOffset("", next))
+        assertEquals(next, added("", next))
+    }
+
+    @Test fun shortGenuineRepetitionSurvives() {
+        // saying a short word twice must not be swallowed: the overlap is under the floor
+        assertEquals("No, I meant it.", added("No. ", "No, I meant it."))
+        assertEquals(0, VoiceSessionPolicy.newTextOffset("go on", "go on then"))
+    }
+
+    @Test fun aMatchFurtherBackThanTheWindowIsIgnored() {
+        val old = "This sentence was committed a long time ago. "
+        val next = "This sentence was committed a long time ago."
+        assertEquals(next, added(old + "x".repeat(VoiceSessionPolicy.COMMITTED_TAIL_WINDOW), next))
+    }
+
+    @Test fun emptyTextIsSafe() {
+        assertEquals(0, VoiceSessionPolicy.newTextOffset("", ""))
+        assertEquals(0, VoiceSessionPolicy.newTextOffset("something", ""))
+        assertEquals(0, VoiceSessionPolicy.newTextOffset("...", "!!!")) // nothing normalisable
+    }
 }

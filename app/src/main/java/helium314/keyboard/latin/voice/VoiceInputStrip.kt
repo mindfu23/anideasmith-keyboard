@@ -6,6 +6,7 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
+import android.widget.TextView
 import helium314.keyboard.keyboard.internal.KeyboardIconsSet
 import helium314.keyboard.latin.R
 import helium314.keyboard.latin.common.ColorType
@@ -20,7 +21,25 @@ import helium314.keyboard.latin.utils.ToolbarKey
  * The system microphone indicator already says the mic is open, but it says nothing about whether
  * this keyboard is hearing anything. That is what the reacting icon is for.
  */
-class VoiceInputStrip private constructor(val root: View, private val icon: ImageView) {
+class VoiceInputStrip private constructor(
+    val root: View,
+    private val icon: ImageView,
+    private val preview: TextView
+) {
+
+    /**
+     * Show what has been heard but not yet finalised. This is the only place provisional dictation
+     * appears: writing it into the text field means a composing span the engine then revises, and
+     * an editor that mishandles one shrinking leaves the discarded words behind as duplicates.
+     */
+    fun onPartial(text: String) {
+        preview.text = text
+    }
+
+    /** Drop the preview once the words have been committed for real. */
+    fun clearPartial() {
+        preview.text = ""
+    }
 
     /**
      * @param rmsDb as reported by the recognizer, roughly -2 (silence) to 10 (loud). The scale is
@@ -50,13 +69,16 @@ class VoiceInputStrip private constructor(val root: View, private val icon: Imag
             stopButton.setImageDrawable(KeyboardIconsSet.instance.getIconDrawable(ToolbarKey.CLOSE_HISTORY.name.lowercase()))
             colors.setColor(stopButton, ColorType.REMOVE_SUGGESTION_ICON)
 
+            val preview = binding.voiceInputSuggestionText
+            preview.setTextColor(colors.get(ColorType.KEY_TEXT))
+
             colors.setBackground(binding.root, ColorType.CLIPBOARD_SUGGESTION_BACKGROUND)
 
             // the whole row stops dictation, not just the button — it is the only thing here to tap
             binding.root.setOnClickListener { onStop() }
             stopButton.setOnClickListener { onStop() }
 
-            return VoiceInputStrip(binding.root, icon)
+            return VoiceInputStrip(binding.root, icon, preview)
         }
     }
 }

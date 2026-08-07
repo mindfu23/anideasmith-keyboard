@@ -18,7 +18,7 @@
     <string name="sliding_key_input_preview_summary" translatable="false">Display visual cue while sliding from Shift or Symbol keys</string>
     <!-- Points at the dictation logging option, which lives next to the log itself rather than here. -->
     <string name="prefs_dictation_logging_note" translatable="false">Dictation text logging</string>
-    <string name="prefs_dictation_logging_note_summary" translatable="false">To record what dictation recognised and wrote, turn on \"Include dictated text in the log\" in About, next to Save log. Off by default, since it puts your speech in the log file.</string>
+    <string name="prefs_dictation_logging_note_summary" translatable="false">To record what dictation recognised and wrote, turn on \"Include dictated text\" in About, next to Save log. It turns itself off again whenever the keyboard starts, since it puts your speech in the log file.</string>
     <!-- Title of the settings group for dumping dictionary files that have been created on the device [CHAR LIMIT=35] -->
     <string name="prefs_dump_dynamic_dicts" translatable="false">Dump dictionary</string>
 </resources>

@@ -806,9 +806,9 @@ New dictionary:
     <!-- preference title for saving the log to a file -->
     <string name="save_log">Save log</string>
     <!-- Option next to "save_log", allowing the saved log to include dictated text. -->
-    <string name="log_dictated_text">Include dictated text in the log</string>
-    <!-- Description for "log_dictated_text". -->
-    <string name="log_dictated_text_summary">Records what dictation recognised and what it wrote, so a saved log can show where wrong or repeated text came from. Your speech ends up in the log file, so leave this off unless you are reporting a dictation problem.</string>
+    <string name="log_dictated_text">Include dictated text</string>
+    <!-- Description for "log_dictated_text". Turns itself off again whenever the keyboard starts. -->
+    <string name="log_dictated_text_summary">Saves text that is being dictated and entered along with the log for better troubleshooting. Must be re-enabled.</string>
     <!-- license for about screen-->
     <string name="license">Open-source license</string>
     <!-- license link for about screen-->

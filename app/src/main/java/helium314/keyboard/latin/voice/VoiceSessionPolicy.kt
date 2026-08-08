@@ -117,6 +117,28 @@ internal object VoiceSessionPolicy {
         return i
     }
 
+    /**
+     * How much of [written] the engine has actually replaced, given its [latest] text.
+     *
+     * Not simply "everything past the agreed prefix". A partial can outrun the segment that
+     * finalises it, so when [finalised] is true [written] usually ends with words belonging to the
+     * *next* utterance — measured on one session, 8 finals in 34. Those words are on screen,
+     * correct, and about to be extended by the partials that follow. Deleting them and letting the
+     * next partial type them again is a round trip through the input connection that changes
+     * nothing, and every round trip is a chance for the field and our record to drift: one such
+     * delete removed 98 characters and reissued the same 98 characters 19ms later.
+     *
+     * The two cases are told apart by where agreement stops. If [latest] is a prefix of [written],
+     * nothing was revised and the remainder is overshoot. If agreement stops *inside* [latest], the
+     * engine rewrote the tail — a spoken "period" becoming "." — and the tail has to go.
+     */
+    fun staleLength(written: String, latest: String, finalised: Boolean): Int {
+        val agreed = agreedPrefixLength(written, latest)
+        // past the end of a finalised utterance is the next utterance, not staleness
+        if (finalised && agreed >= latest.length) return 0
+        return written.length - agreed
+    }
+
     /** Errors meaning "this utterance had nothing in it", not "dictation is over". */
     fun isRestartable(error: Int) =
         error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT

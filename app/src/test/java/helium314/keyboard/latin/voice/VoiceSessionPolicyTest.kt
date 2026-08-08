@@ -317,4 +317,44 @@ class VoiceSessionPolicyTest {
         assertEquals(0, agreed("written", ""))
         assertEquals(0, agreed("", "latest"))
     }
+
+    // --- the overshoot that was deleted and retyped, i.e. the repeated-text bug ----------------
+
+    private fun stale(written: String, latest: String, finalised: Boolean) =
+        VoiceSessionPolicy.staleLength(written, latest, finalised)
+
+    @Test fun aFinalDoesNotTakeBackTheNextUtterance() {
+        // captured at 16:26:10 on the S24: the final covered one sentence, the partials had
+        // already streamed the next one, and 98 correct characters were deleted and reissued 19ms
+        // later. Every such round trip is a chance for the field and our record to disagree.
+        val written = "Trade desks are physically located in NYC. They're literally paying billions."
+        val latest = "Trade desks are physically located in NYC."
+        assertEquals(0, stale(written, latest, finalised = true))
+        assertEquals(" They're literally paying billions.", written.substring(latest.length))
+    }
+
+    @Test fun aFinalStillRewritesWhatTheEngineRevised() {
+        // agreement stops inside the final, so this is a revision and the tail really is stale
+        val written = " Okay, that pause happened period now."
+        val latest = " Okay, that pause happened."
+        assertEquals(written.length - agreed(written, latest), stale(written, latest, finalised = true))
+        assertEquals(" period now.", written.substring(agreed(written, latest)))
+    }
+
+    @Test fun aPartialStillCorrectsWhatItShortened() {
+        // only a final marks the end of an utterance, so mid-utterance a shorter text is a revision
+        assertEquals(" and.".length, stale(" It is and.", " It is", finalised = false))
+        assertEquals(0, stale(" It is and.", " It is", finalised = true))
+    }
+
+    @Test fun anEmptyFinalDeletesNothing() {
+        // a final with no text is not an instruction to remove what is already on screen
+        assertEquals(0, stale(" Something already written.", "", finalised = true))
+    }
+
+    @Test fun nothingIsStaleWhenTheEngineRepeatsItself() {
+        val text = " More text."
+        assertEquals(0, stale(text, text, finalised = true))
+        assertEquals(0, stale(text, text, finalised = false))
+    }
 }

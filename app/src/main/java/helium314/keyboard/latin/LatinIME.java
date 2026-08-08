@@ -1602,7 +1602,10 @@ public class LatinIME extends InputMethodService implements
         final RichInputConnection connection = mInputLogic.mConnection;
         final String onScreen = mVoiceStreamed.toString();
         int agreed = VoiceSessionPolicy.INSTANCE.agreedPrefixLength(onScreen, text);
-        int stale = onScreen.length() - agreed;
+        // Not onScreen.length() - agreed: on a final, what lies past the engine's text is the next
+        // utterance the partials have already streamed, not something to take back. See
+        // VoiceSessionPolicy.staleLength.
+        int stale = VoiceSessionPolicy.INSTANCE.staleLength(onScreen, text, finalised);
         // Deleting is the one thing here that could eat text we did not write, so it only happens
         // when the field still ends with exactly what we put there. A stray keystroke or a cursor
         // move makes that false; then nothing is removed and this becomes a plain append.
@@ -1645,7 +1648,8 @@ public class LatinIME extends InputMethodService implements
         }
         // Past the end of the finalised utterance the engine has already sent words that belong to
         // the next one. They stay on screen and stay tracked, so the partials that follow extend
-        // them instead of writing them a second time.
+        // them instead of writing them a second time. Reachable because staleLength leaves them
+        // alone; when something really was revised, stale covers them and there is nothing to keep.
         final String overshoot = stale == 0 && onScreen.length() > text.length()
                 ? onScreen.substring(text.length()) : "";
         mVoiceStreamed.setLength(0);

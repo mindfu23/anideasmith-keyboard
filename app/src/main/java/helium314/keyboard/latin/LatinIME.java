@@ -154,6 +154,10 @@ public class LatinIME extends InputMethodService implements
     // what this dictation session has committed, so text the engine re-sends can be recognised as a
     // repeat rather than appended. Emptied between sessions, never persisted.
     @NonNull private final StringBuilder mVoiceStreamed = new StringBuilder();
+    // dictated text that is on screen but no longer ours to correct, because the user typed behind
+    // it. The engine repeats the whole utterance in every partial, so it has to stay in the
+    // comparison; it is only the delete that must keep off it.
+    @NonNull private final StringBuilder mVoiceFrozen = new StringBuilder();
     // the compact row shown in place of the suggestions, non-null only while dictating
     @Nullable private VoiceInputStrip mVoiceInputStrip;
 
@@ -1476,8 +1480,10 @@ public class LatinIME extends InputMethodService implements
             onVoiceInputKey(true);
         } else if (mVoiceInputController != null && mVoiceInputController.isActive()) {
             if (mSettings.getCurrent().mVoiceInputKeepTyping) {
-                // dictation continues; settle our composing span so the keystroke lands after it
+                // dictation continues; settle our composing span so the keystroke lands after it,
+                // and stop correcting what the keystroke is about to land behind
                 finishVoiceComposing();
+                freezeVoiceText();
             } else {
                 // any other key ends dictation, and is then handled as normal input
                 cancelVoiceInput("key press");
@@ -1554,6 +1560,50 @@ public class LatinIME extends InputMethodService implements
     private static final int STALE_SEARCH_SLACK = 8;
 
     /**
+     * Give up on correcting what has already been dictated, without forgetting it.
+     *
+     * Called when the user puts something of their own into the field mid-utterance. Dictation
+     * carries on -- a spoken sentence and a typed correction in the same breath is the point of the
+     * setting -- but our record of what we wrote is no longer a run of characters ending at the
+     * cursor. It has a newline, a bullet or a keystroke somewhere inside it, so
+     * {@link #staleInField} can no longer find where our text ends and every correction is refused.
+     *
+     * That refusal is not harmless. The engine ends each partial with a "." which the next partial
+     * replaces, so a refused delete strands the "." and appends after it: " There's another." then
+     * " There." reads as " There's another. There." on screen. And because our record still claims
+     * the "." is gone, every later search in that utterance fails too. Measured on 2026-08-08: two
+     * pressed keys, 17 refusals, and a line reading "There.. There's a further. indent. tab."
+     *
+     * Freezing draws a line instead. What is behind it is never deleted and never searched for;
+     * what the engine adds after it is diffed against nothing, so it appends cleanly and the next
+     * correction has a short, intact run to find.
+     */
+    private void freezeVoiceText() {
+        if (mVoiceInputController == null || !mVoiceInputController.isActive()) return;
+        if (mVoiceStreamed.length() == 0) return;
+        mVoiceFrozen.append(mVoiceStreamed);
+        mVoiceStreamed.setLength(0);
+    }
+
+    /**
+     * How much of the engine's [fullText] is behind the freeze line and must be left out of the
+     * comparison.
+     *
+     * Normally the frozen text is a prefix of what the engine is still sending, since it is the
+     * beginning of the same utterance. When the engine revises inside it -- dropping the "." that
+     * ended a partial, usually -- the line still does not move. What is behind it is on the far
+     * side of the user's own text, so it is neither ours to delete nor ours to rewrite, and a line
+     * that follows the engine backwards would start writing that revision at the cursor instead:
+     * the "." belonging to the end of the previous line reappearing at the start of this one.
+     *
+     * The cost is a character of punctuation left where the user typed, which is where they were
+     * looking when they typed it.
+     */
+    private int frozenPrefixLength(@NonNull final String fullText) {
+        return Math.min(mVoiceFrozen.length(), fullText.length());
+    }
+
+    /**
      * How many characters at the end of the field are no longer wanted, given that everything up to
      * [agreed] of [text] should stay.
      *
@@ -1562,12 +1612,20 @@ public class LatinIME extends InputMethodService implements
      * of a line, and after that our record is a character longer than reality. Deleting by our own
      * count would then take a character of real text with it.
      *
-     * @return the number of characters to remove, or -1 if the kept text cannot be found at all, in
-     *   which case nothing should be deleted — text nobody dictated is not ours to remove.
+     * When [agreed] is zero the engine agrees with nothing we have on screen, so there is no kept
+     * text to anchor on and an empty anchor would match anywhere -- it matches at once, reports
+     * nothing to remove, and strands the whole run for the next append to land behind. Then the
+     * only honest question is whether the field really does end with the characters we are about to
+     * take back, so [stale] is what gets looked for instead.
+     *
+     * @return the number of characters to remove, or -1 if neither can be found, in which case
+     *   nothing should be deleted — text nobody dictated is not ours to remove.
      */
     private int staleInField(@NonNull final RichInputConnection connection,
-            @NonNull final String text, final int agreed, final int limit) {
+            @NonNull final String text, final int agreed, @NonNull final String stale,
+            final int limit) {
         final String keep = text.substring(0, Math.min(agreed, text.length()));
+        if (keep.isEmpty()) return staleAtEndOfField(connection, stale);
         final CharSequence tail = connection.getTextBeforeCursor(keep.length() + limit, 0);
         if (tail == null) return -1;
         final String seen = tail.toString();
@@ -1582,7 +1640,21 @@ public class LatinIME extends InputMethodService implements
     }
 
     /**
-     * Put [text] on screen as the engine's latest word on this utterance, writing only what changed.
+     * The same question with nothing kept to anchor on: does the field still end with the [stale]
+     * characters we mean to take back? No slack here — with no kept text on one side of them there
+     * is nothing to tell a shifted match from a wrong one, so it is an exact tail or nothing.
+     */
+    private int staleAtEndOfField(@NonNull final RichInputConnection connection,
+            @NonNull final String stale) {
+        if (stale.isEmpty()) return -1;
+        final CharSequence tail = connection.getTextBeforeCursor(stale.length(), 0);
+        if (tail == null) return -1;
+        return stale.contentEquals(tail) ? stale.length() : -1;
+    }
+
+    /**
+     * Put [fullText] on screen as the engine's latest word on this utterance, writing only what
+     * changed.
      *
      * The engine extends rather than revises — 239 partial-to-partial transitions in one session
      * were all pure extensions — so nearly every call is an append and the text streams in as it is
@@ -1598,8 +1670,12 @@ public class LatinIME extends InputMethodService implements
      * @param finalised true when this is the engine's last word on the utterance, so what follows
      *   it belongs to the next one and is left for the partials to stream again.
      */
-    private void streamVoiceText(@NonNull final String text, final boolean finalised) {
+    private void streamVoiceText(@NonNull final String fullText, final boolean finalised) {
         final RichInputConnection connection = mInputLogic.mConnection;
+        // Everything the user has typed behind is off limits, so only the part of the utterance
+        // dictated since then takes part in this. The engine keeps resending the whole utterance,
+        // which is why the frozen part has to be subtracted rather than forgotten.
+        final String text = fullText.substring(frozenPrefixLength(fullText));
         final String onScreen = mVoiceStreamed.toString();
         int agreed = VoiceSessionPolicy.INSTANCE.agreedPrefixLength(onScreen, text);
         // Not onScreen.length() - agreed: on a final, what lies past the engine's text is the next
@@ -1615,7 +1691,9 @@ public class LatinIME extends InputMethodService implements
             // line -- seen eight times in one session, never after a letter -- and from then on the
             // two disagree by a character. Trusting our record either removes the wrong character or
             // refuses and leaves the stale words on screen.
-            final int inField = staleInField(connection, text, agreed, stale + STALE_SEARCH_SLACK);
+            final int inField = staleInField(connection, text, agreed,
+                    onScreen.substring(Math.min(agreed, onScreen.length())),
+                    stale + STALE_SEARCH_SLACK);
             if (inField < 0) {
                 Log.i(TAG, "not deleting: cannot find where our text ends in the field"
                         + dictationText("keeping", text.substring(0, agreed)));
@@ -1628,6 +1706,7 @@ public class LatinIME extends InputMethodService implements
         if (DebugFlags.DEBUG_ENABLED) {
             Log.i(TAG, (finalised ? "voice final: " : "voice partial: ") + "agreed=" + agreed
                     + ", removing=" + stale + ", adding=" + addition.length()
+                    + ", frozen=" + mVoiceFrozen.length()
                     + dictationText("engine", text) + dictationText("onScreen", onScreen));
         }
         // A no-op write still has to fall through: the bookkeeping below is what tells the next
@@ -1654,6 +1733,9 @@ public class LatinIME extends InputMethodService implements
                 ? onScreen.substring(text.length()) : "";
         mVoiceStreamed.setLength(0);
         mVoiceStreamed.append(overshoot);
+        // The next utterance is a fresh string from the engine, so nothing of this one is still in
+        // front of it to subtract. The overshoot belongs to that utterance and is already correct.
+        mVoiceFrozen.setLength(0);
         if (DebugFlags.DEBUG_ENABLED && mSettings.getCurrent().mVoiceInputLogText) {
             final CharSequence actual = connection.getTextBeforeCursor(140, 0);
             Log.i(TAG, "field now ends" + dictationText("actual", actual == null ? "<null>" : actual.toString()));
@@ -1703,6 +1785,7 @@ public class LatinIME extends InputMethodService implements
         public void onVoiceInputStarted() {
             Log.i(TAG, "voice input started");
             mVoiceStreamed.setLength(0);
+            mVoiceFrozen.setLength(0);
             showVoiceInputStrip();
         }
 
@@ -1831,6 +1914,9 @@ public class LatinIME extends InputMethodService implements
 
     public void onTextInput(@Nullable String rawText) {
         if (rawText == null) return;
+        // Keys that emit a whole string do not come through onEvent, so this is their only chance
+        // to draw the freeze line before the text lands behind our dictated run.
+        freezeVoiceText();
         // TODO: have the keyboard pass the correct key code when we need it.
         Event event = Event.createSoftwareTextEvent(rawText, KeyCode.MULTIPLE_CODE_POINTS, null);
         InputTransaction completeInputTransaction = mInputLogic.onTextInput(mSettings.getCurrent(),
@@ -1844,8 +1930,10 @@ public class LatinIME extends InputMethodService implements
         // Gesture typing does not go through onEvent, so the any-key-cancels rule there does not
         // cover it. Without this, dictation could keep running while a gesture is committed and
         // the two would interleave text in the same field.
-        if (keepsTypingDuringDictation()) finishVoiceComposing();
-        else cancelVoiceInput("gesture typing");
+        if (keepsTypingDuringDictation()) {
+            finishVoiceComposing();
+            freezeVoiceText();
+        } else cancelVoiceInput("gesture typing");
         mInputLogic.onStartBatchInput(mSettings.getCurrent(), mKeyboardSwitcher, mHandler);
         mGestureConsumer.onGestureStarted(mRichImm.getCurrentSubtypeLocale(), mKeyboardSwitcher.getKeyboard());
     }

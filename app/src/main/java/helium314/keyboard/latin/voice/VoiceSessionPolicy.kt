@@ -139,6 +139,20 @@ internal object VoiceSessionPolicy {
         return written.length - agreed
     }
 
+    /**
+     * Whether the end of a segmented session should open another one rather than end dictation.
+     *
+     * The engine ends its own session after whatever silence it considers final, which on an S24 is
+     * six to seventeen seconds however long a silence the intent asks for. Treating that as the end
+     * of dictation means a pause to think closes the microphone mid-thought. It is the same event
+     * the restart loop sees as a silence timeout, so it gets the same answer and the same cap: a
+     * phone left listening on a table still lets go of the microphone.
+     *
+     * @param emptySessions consecutive sessions that produced no text; any result resets it.
+     */
+    fun shouldReopenSegmentedSession(isActive: Boolean, longForm: Boolean, emptySessions: Int) =
+        isActive && emptySessions < (if (longForm) NO_ERROR_CAP else MAX_CONSECUTIVE_ERRORS)
+
     /** Errors meaning "this utterance had nothing in it", not "dictation is over". */
     fun isRestartable(error: Int) =
         error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT

@@ -357,4 +357,32 @@ class VoiceSessionPolicyTest {
         assertEquals(0, stale(text, text, finalised = true))
         assertEquals(0, stale(text, text, finalised = false))
     }
+
+    // --- the session that ended while the user was still thinking -----------------------------
+
+    @Test fun aPauseDoesNotEndShortFormDictation() {
+        // the engine ends its session after 6-17s whatever silence length the intent asks for, so
+        // ending dictation there closed the microphone mid-sentence
+        assertTrue(VoiceSessionPolicy.shouldReopenSegmentedSession(
+            isActive = true, longForm = false, emptySessions = 0))
+        assertTrue(VoiceSessionPolicy.shouldReopenSegmentedSession(
+            isActive = true, longForm = false,
+            emptySessions = VoiceSessionPolicy.MAX_CONSECUTIVE_ERRORS - 1))
+    }
+
+    @Test fun aForgottenShortFormSessionStillReleasesTheMicrophone() {
+        assertFalse(VoiceSessionPolicy.shouldReopenSegmentedSession(
+            isActive = true, longForm = false,
+            emptySessions = VoiceSessionPolicy.MAX_CONSECUTIVE_ERRORS))
+    }
+
+    @Test fun longFormReopensThroughAnySilence() {
+        assertTrue(VoiceSessionPolicy.shouldReopenSegmentedSession(
+            isActive = true, longForm = true, emptySessions = 500))
+    }
+
+    @Test fun stoppingEndsTheSessionRatherThanReopeningIt() {
+        assertFalse(VoiceSessionPolicy.shouldReopenSegmentedSession(
+            isActive = false, longForm = true, emptySessions = 0))
+    }
 }

@@ -483,20 +483,27 @@ class VoiceInputController(private val context: Context, private val listener: L
         }
 
         /**
-         * The continuous session ended by itself, after a silence long enough to mean "finished".
-         * If the user has not stopped dictation, open another one — that costs one earcon, but only
-         * after [VoiceSessionPolicy.SEGMENTED_SILENCE_MS] of quiet rather than after each sentence.
+         * The continuous session ended by itself, after a silence the engine considers final. If
+         * the user has not stopped dictation, open another one — that costs one earcon, but only
+         * per silence rather than after each sentence.
+         *
+         * Short-form gets this too. The engine ignores the silence length asked for and ends the
+         * session after six to seventeen seconds, so ending dictation here meant a pause to think
+         * closed the microphone mid-sentence — five times in one afternoon's testing. The cap in
+         * [VoiceSessionPolicy.shouldReopenSegmentedSession] is what still releases it eventually.
          */
         override fun onEndOfSegmentedSession() {
-            Log.i(TAG, "onEndOfSegmentedSession (active=$isActive)")
+            Log.i(TAG, "onEndOfSegmentedSession (active=$isActive, empty=$consecutiveErrors)")
             if (cancelling) return
-            if (isActive && longForm) {
+            if (VoiceSessionPolicy.shouldReopenSegmentedSession(isActive, longForm, consecutiveErrors)) {
+                // a session that ended in silence counts the same as a silence timeout would
+                consecutiveErrors++
                 restartListening()
-            } else {
-                isActive = false
-                release()
-                listener.onVoiceInputStopped()
+                return
             }
+            isActive = false
+            release()
+            listener.onVoiceInputStopped()
         }
 
         override fun onPartialResults(partialResults: Bundle?) {
@@ -518,8 +525,12 @@ class VoiceInputController(private val context: Context, private val listener: L
         /** Runs the callback on the thread that delivers it; these callbacks only log. */
         private val DIRECT_EXECUTOR = Executor { it.run() }
 
-        /** What long-form dictation asks the engine to tolerate before ending an utterance. */
-        private const val LONG_FORM_SILENCE_MS = 30_000L
+        /**
+         * What long-form dictation asks the engine to tolerate before ending an utterance. An Int
+         * because the extras are read with getIntExtra: a Long is not a smaller ask, it is no ask
+         * at all, silently answered with the engine's own default.
+         */
+        private const val LONG_FORM_SILENCE_MS = 30_000
 
         fun errorName(error: Int) = when (error) {
             SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "ERROR_NETWORK_TIMEOUT"

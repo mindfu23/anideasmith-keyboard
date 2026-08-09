@@ -182,6 +182,13 @@ class VoiceInputController(private val context: Context, private val listener: L
 
         val intent = buildIntent(locale, preferOffline)
         currentIntent = intent
+        // What was asked for, so a log can be read against the request rather than guessed at.
+        // EXTRA_ENABLE_FORMATTING is the one that decides whether the engine punctuates and
+        // capitalises by itself, which is the difference between text to correct and text to leave.
+        if (DebugFlags.DEBUG_ENABLED)
+            Log.i(TAG, "asked for: formatting=${intent.hasExtra(RecognizerIntent.EXTRA_ENABLE_FORMATTING)}"
+                    + ", preferOffline=$preferOffline, autoPunctuation=$autoPunctuation"
+                    + ", longForm=$longForm, segmented=${intent.hasExtra(RecognizerIntent.EXTRA_SEGMENTED_SESSION)}")
         if (DebugFlags.DEBUG_ENABLED && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
             logRecognitionSupport(r, intent)
 

@@ -267,22 +267,6 @@ class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int)
     private fun voiceKeyView(which: ToolbarKey): View? =
         pinnedKeys.findViewWithTag<View>(which) ?: toolbar.findViewWithTag<View>(which)
 
-    /**
-     * Give the dictation row the width for the second half of this sentence. The pinned keys sit
-     * beside it, and with a few of them the words being recognised are left a handful of characters
-     * — measured at four. The key showing the session state stays, because that is how the user
-     * stops; the rest can wait until dictation is over.
-     */
-    private fun setPinnedKeysCrowdedOut(active: Boolean, longForm: Boolean) {
-        val keep = if (longForm) ToolbarKey.VOICE_LONG_FORM else ToolbarKey.VOICE
-        for (i in 0 until pinnedKeys.childCount) {
-            val child = pinnedKeys.getChildAt(i)
-            child.isVisible = !active || child.tag == keep
-        }
-        // the voice key's own visibility is a setting, not ours to hand back
-        if (!active) updateVoiceKey()
-    }
-
     @JvmOverloads
     fun setVoiceInputActive(active: Boolean, longForm: Boolean = false) {
         voicePulse?.cancel()
@@ -291,7 +275,10 @@ class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int)
         listOf(ToolbarKey.VOICE, ToolbarKey.VOICE_LONG_FORM).forEach {
             voiceKeyView(it)?.background = defaultToolbarBackground.constantState?.newDrawable(resources)
         }
-        setPinnedKeysCrowdedOut(active, longForm)
+        // The pinned keys stay put while dictating. They used to be hidden to give the dictation row
+        // room for a preview of the words being heard, which cost the user tab and the cursor arrows
+        // to show text the field was already showing. The row carries no text now and fits beside
+        // them.
         if (!active) return
         // the pulse belongs to the key that is actually running; a short-form session gets a
         // steady highlight because it ends on its own and does not need watching

@@ -6,7 +6,6 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
-import android.widget.TextView
 import helium314.keyboard.keyboard.internal.KeyboardIconsSet
 import helium314.keyboard.latin.R
 import helium314.keyboard.latin.common.ColorType
@@ -15,31 +14,23 @@ import helium314.keyboard.latin.settings.Settings
 import helium314.keyboard.latin.utils.ToolbarKey
 
 /**
- * The row shown in place of the suggestion strip while dictating: a microphone that reacts to the
- * voice level, a "Listening…" label, and a stop button.
+ * The small control shown in the suggestion strip while dictating: a microphone that reacts to the
+ * voice level, and a stop button. It sits beside the pinned toolbar keys rather than replacing
+ * them, so tab and the cursor arrows stay reachable while dictating.
  *
  * The system microphone indicator already says the mic is open, but it says nothing about whether
  * this keyboard is hearing anything. That is what the reacting icon is for.
+ *
+ * It deliberately shows no text. It used to preview what had been heard but not yet finalised, back
+ * when that was the only place provisional dictation appeared. Partials are streamed into the text
+ * field now, so the preview only repeated what was already on screen behind it -- and it repeated
+ * it in the width the toolbar keys needed, which left four characters for the words and no room at
+ * all for the keys.
  */
 class VoiceInputStrip private constructor(
     val root: View,
-    private val icon: ImageView,
-    private val preview: TextView
+    private val icon: ImageView
 ) {
-
-    /**
-     * Show what has been heard but not yet finalised. This is the only place provisional dictation
-     * appears: writing it into the text field means a composing span the engine then revises, and
-     * an editor that mishandles one shrinking leaves the discarded words behind as duplicates.
-     */
-    fun onPartial(text: String) {
-        preview.text = text
-    }
-
-    /** Drop the preview once the words have been committed for real. */
-    fun clearPartial() {
-        preview.text = ""
-    }
 
     /**
      * @param rmsDb as reported by the recognizer, roughly -2 (silence) to 10 (loud). The scale is
@@ -69,16 +60,14 @@ class VoiceInputStrip private constructor(
             stopButton.setImageDrawable(KeyboardIconsSet.instance.getIconDrawable(ToolbarKey.CLOSE_HISTORY.name.lowercase()))
             colors.setColor(stopButton, ColorType.REMOVE_SUGGESTION_ICON)
 
-            val preview = binding.voiceInputSuggestionText
-            preview.setTextColor(colors.get(ColorType.KEY_TEXT))
-
             colors.setBackground(binding.root, ColorType.CLIPBOARD_SUGGESTION_BACKGROUND)
 
-            // the whole row stops dictation, not just the button — it is the only thing here to tap
+            // the whole control stops dictation, not just the button — it is the only thing here to
+            // tap, and it is small enough now that hitting it by accident is not a worry
             binding.root.setOnClickListener { onStop() }
             stopButton.setOnClickListener { onStop() }
 
-            return VoiceInputStrip(binding.root, icon, preview)
+            return VoiceInputStrip(binding.root, icon)
         }
     }
 }

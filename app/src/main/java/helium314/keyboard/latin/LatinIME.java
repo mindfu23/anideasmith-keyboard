@@ -1480,9 +1480,7 @@ public class LatinIME extends InputMethodService implements
             onVoiceInputKey(true);
         } else if (mVoiceInputController != null && mVoiceInputController.isActive()) {
             if (mSettings.getCurrent().mVoiceInputKeepTyping) {
-                // dictation continues; settle our composing span so the keystroke lands after it,
-                // and stop correcting what the keystroke is about to land behind
-                finishVoiceComposing();
+                // dictation continues; stop correcting what the keystroke is about to land behind
                 freezeVoiceText();
             } else {
                 // any other key ends dictation, and is then handled as normal input
@@ -1771,16 +1769,6 @@ public class LatinIME extends InputMethodService implements
     }
 
     /**
-     * Settle the dictation preview so typing, a cursor move or the end of the session does not run
-     * into it. Nothing is committed here: what has not been finalised was never written to the text
-     * field, so there is nothing in the document to keep or delete. Words already dictated stay,
-     * which is what a cancelled dictation should leave behind.
-     */
-    private void finishVoiceComposing() {
-        if (mVoiceInputStrip != null) mVoiceInputStrip.clearPartial();
-    }
-
-    /**
      * Whether typing, gestures and suggestions should leave dictation running. Applies to both
      * modes: a quick message often wants a spoken sentence and a typed correction.
      */
@@ -1839,14 +1827,12 @@ public class LatinIME extends InputMethodService implements
             // finalised, which onVoiceInputFinal repairs. Never a composing span: replacing one is
             // what duplicated text, since a partial can outrun the segment that finalises it.
             streamVoiceText(text, false);
-            if (mVoiceInputStrip != null) mVoiceInputStrip.onPartial(text);
         }
 
         @Override
         public void onVoiceInputFinal(@NonNull final String text) {
             mVoiceInputGotResults = true;
             streamVoiceText(text, true);
-            if (mVoiceInputStrip != null) mVoiceInputStrip.clearPartial();
         }
 
         @Override
@@ -1899,9 +1885,6 @@ public class LatinIME extends InputMethodService implements
                 return;
             }
             Log.w(TAG, "speech engine stopped listening, rebuilding it");
-            // Settle what has been dictated so far: the rebuild takes a moment and a composing
-            // span left open across it would be replaced by the next partial rather than kept.
-            finishVoiceComposing();
             // Deliberately not a toast. Dictation is still running, so anything that overlays the
             // keyboard or steals attention would interrupt the thing it is reporting on. The space
             // bar is already where this session says what it is doing, and it clears itself: the
@@ -1915,7 +1898,6 @@ public class LatinIME extends InputMethodService implements
         @Override
         public void onVoiceInputStopped() {
             Log.i(TAG, "voice input stopped");
-            finishVoiceComposing();
             hideVoiceInputStrip();
         }
     };
@@ -1973,10 +1955,8 @@ public class LatinIME extends InputMethodService implements
         // Gesture typing does not go through onEvent, so the any-key-cancels rule there does not
         // cover it. Without this, dictation could keep running while a gesture is committed and
         // the two would interleave text in the same field.
-        if (keepsTypingDuringDictation()) {
-            finishVoiceComposing();
-            freezeVoiceText();
-        } else cancelVoiceInput("gesture typing");
+        if (keepsTypingDuringDictation()) freezeVoiceText();
+        else cancelVoiceInput("gesture typing");
         mInputLogic.onStartBatchInput(mSettings.getCurrent(), mKeyboardSwitcher, mHandler);
         mGestureConsumer.onGestureStarted(mRichImm.getCurrentSubtypeLocale(), mKeyboardSwitcher.getKeyboard());
     }

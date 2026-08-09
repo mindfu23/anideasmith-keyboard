@@ -14,6 +14,16 @@ import helium314.keyboard.latin.settings.Settings
 import helium314.keyboard.latin.utils.ToolbarKey
 
 /**
+ * UNUSED, kept on purpose. The calls that built this are commented out in LatinIME.showDictationUi
+ * and onVoiceInputRms; uncommenting them brings it back with no other change. It is here because
+ * the level-reacting microphone is the only thing that ever showed whether the keyboard could
+ * *hear* anything, as opposed to whether a session was open, and that may be wanted again — for a
+ * mode with no toolbar to lean on, or when an engine goes deaf and the question is whether audio is
+ * arriving at all.
+ *
+ * Not used now because its only control duplicates the pinned voice key, which already toggles the
+ * session, and it spent the width the toolbar keys need to do it.
+ *
  * The small control shown in the suggestion strip while dictating: a microphone that reacts to the
  * voice level, and a stop button. It sits beside the pinned toolbar keys rather than replacing
  * them, so tab and the cursor arrows stay reachable while dictating.

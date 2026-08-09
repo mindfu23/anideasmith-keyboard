@@ -260,12 +260,22 @@ class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int)
     /**
      * Marks the voice key as active while dictating, pulsing during a long-form session.
      *
-     * The "Listening…" row lives inside [suggestionsStrip], so any suggestion update clears it —
-     * and during long-form dictation the user is typing and picking suggestions on purpose. The
-     * pinned key survives all of that, so it is the one place the state can be shown continuously.
+     * Any suggestion update clears the suggestions row, and during long-form dictation the user is
+     * typing and picking suggestions on purpose. The pinned key survives all of that, so it is the
+     * one place the state can be shown continuously.
      */
     private fun voiceKeyView(which: ToolbarKey): View? =
         pinnedKeys.findViewWithTag<View>(which) ?: toolbar.findViewWithTag<View>(which)
+
+    /**
+     * Whether the key that shows a dictation session, and stops it, is pinned — and so still there
+     * once the toolbar is closed. Nothing is pinned by default, and with no row of its own a
+     * session then has nothing on screen but the space bar label and no one-tap way out.
+     */
+    fun hasPinnedVoiceKey(longForm: Boolean): Boolean {
+        val which = if (longForm) ToolbarKey.VOICE_LONG_FORM else ToolbarKey.VOICE
+        return pinnedKeys.findViewWithTag<View>(which)?.isVisible == true
+    }
 
     @JvmOverloads
     fun setVoiceInputActive(active: Boolean, longForm: Boolean = false) {

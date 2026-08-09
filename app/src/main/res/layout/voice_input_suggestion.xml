@@ -2,7 +2,9 @@
 <!--
     SPDX-License-Identifier: GPL-3.0-only
 -->
-<!-- Sized to its contents, not to the strip. It shares the row with the pinned toolbar keys, which
+<!-- UNUSED, kept on purpose along with VoiceInputStrip, which inflates it. See that class for why.
+
+     Sized to its contents, not to the strip. It shares the row with the pinned toolbar keys, which
      stay reachable while dictating, so it takes only the width the microphone and the stop button
      need. Keeping it full width also made every empty pixel of the strip a stop button. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"

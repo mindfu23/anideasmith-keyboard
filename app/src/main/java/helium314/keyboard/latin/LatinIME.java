@@ -158,8 +158,9 @@ public class LatinIME extends InputMethodService implements
     // it. The engine repeats the whole utterance in every partial, so it has to stay in the
     // comparison; it is only the delete that must keep off it.
     @NonNull private final StringBuilder mVoiceFrozen = new StringBuilder();
-    // the compact row shown in place of the suggestions, non-null only while dictating
-    @Nullable private VoiceInputStrip mVoiceInputStrip;
+    // whether the dictation state is currently being shown: the highlighted voice key and the
+    // space bar label. Not a view — see showDictationUi for the row that used to live here.
+    private boolean mVoiceInputUiShown = false;
 
     // TODO: Move these {@link View}s to {@link KeyboardSwitcher}.
     private View mInputView;
@@ -1802,7 +1803,7 @@ public class LatinIME extends InputMethodService implements
             Log.i(TAG, "voice input started");
             mVoiceStreamed.setLength(0);
             mVoiceFrozen.setLength(0);
-            showVoiceInputStrip();
+            showDictationUi();
         }
 
         @Override
@@ -1841,9 +1842,14 @@ public class LatinIME extends InputMethodService implements
                 // a flat value here means no audio is reaching the recognizer
                 Log.i(TAG, "voice rms: " + rmsDb);
             }
-            if (mVoiceInputStrip != null) {
-                mVoiceInputStrip.onRms(rmsDb);
-            }
+            // COMMENTED OUT, not deleted: the dictation row's microphone dimmed and brightened with
+            // this, which was the only thing on screen saying the keyboard could hear anything. The
+            // pinned voice key does not react to level — it shows that a session is running, not
+            // that sound is arriving. Nothing else consumes rms now; the log line above is the
+            // instrument if a session ever goes silent again.
+            // if (mVoiceInputStrip != null) {
+            //     mVoiceInputStrip.onRms(rmsDb);
+            // }
         }
 
         @Override
@@ -1889,8 +1895,8 @@ public class LatinIME extends InputMethodService implements
             // keyboard or steals attention would interrupt the thing it is reporting on. The space
             // bar is already where this session says what it is doing, and it clears itself: the
             // rebuilt session sets the label back to "Listening…"/"Dictation" a moment later.
-            // Only while the strip exists, since that is what clears the label again at the end.
-            if (mVoiceInputStrip != null) {
+            // Only while the session is on screen, since that is what clears the label at the end.
+            if (mVoiceInputUiShown) {
                 setDictationSpaceBarLabel(getString(R.string.voice_input_reconnecting));
             }
         }
@@ -1898,32 +1904,46 @@ public class LatinIME extends InputMethodService implements
         @Override
         public void onVoiceInputStopped() {
             Log.i(TAG, "voice input stopped");
-            hideVoiceInputStrip();
+            hideDictationUi();
         }
     };
 
-    private void showVoiceInputStrip() {
+    /**
+     * Show that a session is running: the pinned voice key takes the highlight, and the space bar
+     * says what kind of session it is. Both are places the user is already looking, and the key is
+     * also how they stop — it toggles.
+     *
+     * There is deliberately no row of its own. {@link VoiceInputStrip} built one, kept in case it is
+     * wanted again, but a control whose only job is stopping the session duplicates a key that
+     * already does that, in the space the toolbar keys need.
+     */
+    private void showDictationUi() {
         if (!hasSuggestionStripView()) return;
         final boolean longForm = mVoiceInputController != null && mVoiceInputController.getLongForm();
-        mVoiceInputStrip = VoiceInputStrip.Companion.create(this, mSuggestionStripView, () -> {
-            if (mVoiceInputController != null) mVoiceInputController.stop();
-            return Unit.INSTANCE;
-        });
-        mSuggestionStripView.setExternalSuggestionView(mVoiceInputStrip.getRoot(), false);
-        // the row above is transient - any suggestion update clears it - so the pinned voice key
-        // carries the state for the rest of the session
+        mVoiceInputUiShown = true;
+        // COMMENTED OUT, not deleted: the dictation row. See VoiceInputStrip.
+        // mVoiceInputStrip = VoiceInputStrip.Companion.create(this, mSuggestionStripView, () -> {
+        //     if (mVoiceInputController != null) mVoiceInputController.stop();
+        //     return Unit.INSTANCE;
+        // });
+        // mSuggestionStripView.setExternalSuggestionView(mVoiceInputStrip.getRoot(), false);
         mSuggestionStripView.setVoiceInputActive(true, longForm);
         setDictationSpaceBarLabel(getString(longForm
                 ? R.string.voice_input_listening_long_form : R.string.voice_input_listening));
-        // setExternalSuggestionView only collapses the toolbar when "auto hide toolbar" is on.
-        // With the toolbar expanded — which it is, since the mic key lives there — it covers the
-        // suggestions row our view was just added to, so dictation would show no UI at all.
-        mSuggestionStripView.setToolbarVisibility(false);
+        // The toolbar is expanded, since the mic key lives there, and an expanded toolbar hides the
+        // pinned keys — including the voice key showing the session and offering the way out of it.
+        //
+        // Only when there is such a key to uncover. Nothing is pinned by default, and closing the
+        // toolbar then takes away the microphone the user just pressed without putting anything in
+        // its place: the session would run with only the space bar label to show for it.
+        if (mSuggestionStripView.hasPinnedVoiceKey(longForm)) {
+            mSuggestionStripView.setToolbarVisibility(false);
+        }
     }
 
-    private void hideVoiceInputStrip() {
-        if (mVoiceInputStrip == null) return;
-        mVoiceInputStrip = null;
+    private void hideDictationUi() {
+        if (!mVoiceInputUiShown) return;
+        mVoiceInputUiShown = false;
         if (hasSuggestionStripView()) {
             mSuggestionStripView.setVoiceInputActive(false);
             setNeutralSuggestionStrip();

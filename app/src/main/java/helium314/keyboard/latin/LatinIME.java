@@ -1590,17 +1590,39 @@ public class LatinIME extends InputMethodService implements
      * comparison.
      *
      * Normally the frozen text is a prefix of what the engine is still sending, since it is the
-     * beginning of the same utterance. When the engine revises inside it -- dropping the "." that
-     * ended a partial, usually -- the line still does not move. What is behind it is on the far
-     * side of the user's own text, so it is neither ours to delete nor ours to rewrite, and a line
-     * that follows the engine backwards would start writing that revision at the cursor instead:
-     * the "." belonging to the end of the previous line reappearing at the start of this one.
+     * beginning of the same utterance, and splitting on its length is exact.
      *
-     * The cost is a character of punctuation left where the user typed, which is where they were
-     * looking when they typed it.
+     * When it is not a prefix the engine has rewritten something behind the user's edit, and there
+     * is no good answer: that text cannot be corrected, so whatever is written next either repeats
+     * part of it or drops part of what was said. Splitting on the length -- what happens here --
+     * picks a third option, and it is the worst of them. Measured 2026-08-09: the freeze fell inside
+     * "Miller's" while the engine still had it as "Mill.", and the split wrote the remainder as a
+     * word that was never spoken:
+     *
+     *   frozen=199 [... that Max Mill.]   engine gives [... that Max Miller's, his nephew.]
+     *   split at 199                   -> writes "r's, his nephew."
+     *
+     * Seven of twelve freezes in that session also lost the leading space every other segment
+     * carries, for the same reason. Left as it is deliberately, until a log says which of the three
+     * costs is the one to pay; the divergence is logged so the next one can count them.
      */
     private int frozenPrefixLength(@NonNull final String fullText) {
-        return Math.min(mVoiceFrozen.length(), fullText.length());
+        final int frozen = Math.min(mVoiceFrozen.length(), fullText.length());
+        if (DebugFlags.DEBUG_ENABLED && frozen > 0 && !startsWithFrozen(fullText)) {
+            Log.w(TAG, "engine revised behind the freeze, split may cut a word: agreed="
+                    + VoiceSessionPolicy.INSTANCE.agreedPrefixLength(mVoiceFrozen.toString(), fullText)
+                    + " of " + mVoiceFrozen.length()
+                    + dictationText("frozen", mVoiceFrozen.toString()));
+        }
+        return frozen;
+    }
+
+    private boolean startsWithFrozen(@NonNull final String fullText) {
+        if (fullText.length() < mVoiceFrozen.length()) return false;
+        for (int i = 0; i < mVoiceFrozen.length(); i++) {
+            if (fullText.charAt(i) != mVoiceFrozen.charAt(i)) return false;
+        }
+        return true;
     }
 
     /**

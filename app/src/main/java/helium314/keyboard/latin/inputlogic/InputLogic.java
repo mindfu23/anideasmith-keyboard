@@ -1982,7 +1982,8 @@ public final class InputLogic {
      * sometimes a word in the middle ("another Clause period"), so a stray capital is the most
      * frequent thing there is to fix, and the least well served by a spelling lookup.
      *
-     * Both directions, since the same accident happens the other way: "mark" that should be "Mark".
+     * All three directions, since the accident happens every way round: "mark" that wanted to be
+     * "Mark", "correction" that wanted to be "CORRECTION".
      *
      * Locale-aware, because case is: in Turkish the lower case of "I" is "ı" and not "i".
      */
@@ -1994,9 +1995,16 @@ public final class InputLogic {
         // what is already in the list being built — deliberately not seeded with the selected word,
         // so the dictionary's copy of it survives and "leave it alone" stays on offer
         final ArrayList<String> inList = new ArrayList<>();
-        // score above anything the dictionary returns, so these sit where the user can reach them
-        int score = SuggestedWords.MAX_SUGGESTIONS + 2;
-        for (final String variant : new String[] { word.toLowerCase(locale), capitalise(word, locale) }) {
+        // score above anything the dictionary returns, so these sit where the user can reach them.
+        // Ordered least shouty first, which is also most-wanted first: the capital to remove is the
+        // one dictation keeps adding.
+        //
+        // Whichever of the three the word already is drops out by itself, so this offers two in
+        // practice — an all-capitals word is left with lower case alone, which is the only thing
+        // anyone wants from one.
+        int score = SuggestedWords.MAX_SUGGESTIONS + 3;
+        for (final String variant : new String[] {
+                word.toLowerCase(locale), capitalise(word, locale), word.toUpperCase(locale) }) {
             if (variant.isEmpty() || variant.equals(word) || inList.contains(variant)) continue;
             inList.add(variant);
             withCase.add(new SuggestedWordInfo(variant, "" /* prevWordsContext */, score--,

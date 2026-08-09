@@ -301,6 +301,12 @@ public final class InputLogic {
             Event event = Event.createPunctuationSuggestionPickedEvent(suggestionInfo);
             return onCodeInput(settingsValues, event, keyboardCapsMode, currentKeyboardScript, handler);
         }
+        // A pick with the selection still standing is answering "what else might this word be?", so
+        // it replaces the selection and nothing else. commitText does that in one operation, which
+        // is why this path needs none of the composing bookkeeping below.
+        if (mConnection.hasSelection()) {
+            return replaceSelectionWithSuggestion(settingsValues, suggestionInfo, keyboardCapsMode);
+        }
         if (GestureDataGatheringKt.useBackgroundGathering) {
             if (mWordComposer.isBatchMode())
                 // should only happen selecting different suggestion for gesture typed word
@@ -1830,11 +1836,16 @@ public final class InputLogic {
                 // of the batch input will replace the new composition. This may happen in the corner case
                 // that the app moves the cursor on its own accord during a batch input.
                 || mInputLogicHandler.isInBatchInput()
-                // If the cursor is not touching a word, or if there is a selection, return right away.
-                || mConnection.hasSelection()
                 // If we don't know the cursor location, return.
                 || mConnection.getExpectedSelectionStart() < 0) {
             mSuggestionStripViewAccessor.setNeutralSuggestionStrip();
+            return;
+        }
+        // A selected word is asking a different question — "what else might this be?" — and it can
+        // be answered without composing anything, since the selection already says what a pick
+        // would replace. Everything below this point composes, which is why it used to bail here.
+        if (mConnection.hasSelection()) {
+            suggestAlternativesForSelection(settingsValues);
             return;
         }
 
@@ -1875,6 +1886,90 @@ public final class InputLogic {
             return;
         }
         restartSuggestions(range);
+    }
+
+    /**
+     * Swap the selected word for the one the user picked. The selection is the replacement range,
+     * so this is a single commitText and no composing state is created or consumed — which is what
+     * makes it safe to offer while dictation is running.
+     */
+    private InputTransaction replaceSelectionWithSuggestion(final SettingsValues settingsValues,
+            final SuggestedWordInfo suggestionInfo, final CapsMode keyboardCapsMode) {
+        final Event event = Event.createSuggestionPickedEvent(suggestionInfo);
+        final InputTransaction inputTransaction = new InputTransaction(settingsValues, event,
+                SystemClock.uptimeMillis(), mSpaceState, keyboardCapsMode);
+        inputTransaction.setDidAffectContents();
+        mConnection.beginBatchEdit();
+        mConnection.commitText(suggestionInfo.mWord, 1);
+        mConnection.endBatchEdit();
+        // No phantom space: the word went into the middle of existing text, and whatever spacing was
+        // around the selection is still there.
+        mSpaceState = SpaceState.NONE;
+        resetComposingState(true /* alsoResetLastComposedWord */);
+        mSuggestedWords = SuggestedWords.getEmptyInstance();
+        mSuggestionStripViewAccessor.setNeutralSuggestionStrip();
+        inputTransaction.requireShiftUpdate(InputTransaction.SHIFT_UPDATE_NOW);
+        StatsUtils.onPickSuggestionManually(mSuggestedWords, suggestionInfo, mDictionaryFacilitator);
+        return inputTransaction;
+    }
+
+    /** Longest selection still treated as one word. Above this it is a phrase, and not our business. */
+    private static final int MAX_SELECTED_WORD_LENGTH = 48;
+
+    /**
+     * Offer other words the selected one might have been meant to be.
+     *
+     * The dictionary finds near misses from where the letters sit on the keyboard, which is what
+     * makes gesture typing produce plausible alternatives rather than only exact matches. Nothing
+     * requires those letters to have been typed, so the same lookup answers for a word that is
+     * already in the field however it got there — dictated, pasted or typed.
+     *
+     * Deliberately composes nothing. The existing recorrection path answers the same question by
+     * setting a composing region over the word, which is what made it unusable during dictation: the
+     * span lands on text dictation just wrote and shifts it. A selection needs none of that, because
+     * it already says exactly what a pick replaces, so this runs on a throwaway
+     * {@link WordComposer} and leaves {@link #mWordComposer} alone.
+     */
+    private void suggestAlternativesForSelection(final SettingsValues settingsValues) {
+        final CharSequence selected = mConnection.getSelectedText(0);
+        if (selected == null || selected.length() == 0 || selected.length() > MAX_SELECTED_WORD_LENGTH) {
+            mSuggestionStripViewAccessor.setNeutralSuggestionStrip();
+            return;
+        }
+        final String word = selected.toString();
+        // One word only. A phrase has no single answer, and offering to replace it with a word
+        // would be a way to lose a sentence to a stray tap.
+        for (int i = 0; i < word.length(); i++) {
+            if (settingsValues.isWordSeparator(word.codePointAt(i))) {
+                mSuggestionStripViewAccessor.setNeutralSuggestionStrip();
+                return;
+            }
+        }
+        if (!isResumableWord(settingsValues, word)) {
+            mSuggestionStripViewAccessor.setNeutralSuggestionStrip();
+            return;
+        }
+        final Keyboard keyboard = KeyboardSwitcher.getInstance().getKeyboard();
+        if (keyboard == null) return;
+        final int[] codePoints = StringUtils.toCodePointArray(word);
+        final WordComposer composer = new WordComposer();
+        composer.setComposingWord(codePoints, mLatinIME.getCoordinatesForCurrentKeyboard(codePoints));
+        // context from the word before the selection, not from the selection itself
+        final NgramContext ngramContext = getNgramContextFromNthPreviousWordForSuggestion(
+                settingsValues.mSpacingAndPunctuations, 1);
+        mInputLogicHandler.getSuggestedWords(() -> {
+            try {
+                final SuggestedWords suggested = mSuggest.getSuggestedWords(composer, ngramContext,
+                        keyboard, settingsValues.mSettingsValuesForSuggestion,
+                        // never auto-correct: the user selected this word deliberately, and a pick
+                        // here replaces it outright
+                        false, SuggestedWords.INPUT_STYLE_RECORRECTION,
+                        SuggestedWords.NOT_A_SEQUENCE_NUMBER);
+                mLatinIME.mHandler.setSuggestions(suggested);
+            } catch (Exception e) {
+                Log.e(TAG, "error getting alternatives for the selected word", e);
+            }
+        });
     }
 
     private void restartSuggestions(final TextRange range) {

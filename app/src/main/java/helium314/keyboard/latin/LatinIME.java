@@ -341,7 +341,11 @@ public class LatinIME extends InputMethodService implements
             // text shifts by a character, so what is on screen no longer matches what dictation
             // believes it wrote, and the next correction is refused. The user is speaking, not
             // typing, so there is nothing here for suggestions to help with anyway.
-            if (latinIme.isDictating()) {
+            //
+            // A selected word is the exception, and the reason the exception is safe: answering for
+            // one composes nothing, so it cannot put a span over dictated text. Selecting a word to
+            // fix it is also exactly what someone does mid-dictation.
+            if (latinIme.isDictating() && !latinIme.mInputLogic.mConnection.hasSelection()) {
                 return;
             }
             removeMessages(MSG_RESUME_SUGGESTIONS);
@@ -2079,6 +2083,9 @@ public class LatinIME extends InputMethodService implements
     // interface
     @Override
     public void pickSuggestionManually(final SuggestedWordInfo suggestionInfo) {
+        // The user is about to change text of their own accord, which is the same thing a keystroke
+        // does: what dictation has already written stops being ours to correct.
+        freezeVoiceText();
         final InputTransaction completeInputTransaction = mInputLogic.onPickSuggestionManually(
                 mSettings.getCurrent(), suggestionInfo,
                 mKeyboardSwitcher.getKeyboardCapsMode(),

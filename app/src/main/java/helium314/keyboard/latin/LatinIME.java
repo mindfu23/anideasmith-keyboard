@@ -1613,17 +1613,29 @@ public class LatinIME extends InputMethodService implements
      * Both lose speech silently. This one keeps every character the engine heard and puts the damage
      * somewhere a reader can see it, next to the edit that caused it.
      *
-     * The divergence is logged so its frequency stays visible rather than being assumed.
+     * None of that applies when the engine agrees with *none* of the frozen text. Then the length is
+     * not a slightly wrong split point, it is a meaningless one: subtracting it takes that many
+     * characters off the front of text the engine never said before. Measured 2026-08-09, all eight
+     * divergences in one session were this case, every one while the user was typing —
+     *
+     *   onPartialResults, 3 chars   frozen=7   ->  adding=0, the whole payload dropped
+     *   onPartialResults, ...       frozen=13  ->  adding=0, twice more
+     *
+     * — because a keystroke freezes the run, so the frozen length grows with every key pressed while
+     * the engine is still revising a short utterance. So when nothing matches, nothing is subtracted:
+     * the payload is written as new text, after whatever is already there. That keeps every character
+     * the engine heard, which is the same reason the tail case cuts rather than drops.
      */
     private int frozenPrefixLength(@NonNull final String fullText) {
         final int frozen = Math.min(mVoiceFrozen.length(), fullText.length());
-        if (DebugFlags.DEBUG_ENABLED && frozen > 0 && !startsWithFrozen(fullText)) {
-            Log.w(TAG, "engine revised behind the freeze, split may cut a word: agreed="
-                    + VoiceSessionPolicy.INSTANCE.agreedPrefixLength(mVoiceFrozen.toString(), fullText)
-                    + " of " + mVoiceFrozen.length()
+        if (frozen == 0 || startsWithFrozen(fullText)) return frozen;
+        final int agreed = VoiceSessionPolicy.INSTANCE.agreedPrefixLength(mVoiceFrozen.toString(), fullText);
+        if (DebugFlags.DEBUG_ENABLED) {
+            Log.w(TAG, "engine revised behind the freeze: agreed=" + agreed
+                    + " of " + mVoiceFrozen.length() + (agreed == 0 ? ", writing it as new text" : ", split may cut a word")
                     + dictationText("frozen", mVoiceFrozen.toString()));
         }
-        return frozen;
+        return agreed == 0 ? 0 : frozen;
     }
 
     private boolean startsWithFrozen(@NonNull final String fullText) {

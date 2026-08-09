@@ -1790,6 +1790,21 @@ public class LatinIME extends InputMethodService implements
         }
 
         @Override
+        public void onVoiceInputListening() {
+            // A session that has been reopened sends its text from the beginning, so what the last
+            // one streamed is no longer anything to reconcile against. It stays on screen and the
+            // new utterance is appended after it.
+            //
+            // Left in place it would be worse than useless: the first partial of the new session
+            // disagrees with it from the first character, so it is read as stale and deleted --
+            // words the user spoke, removed for having been caught by a session that has ended.
+            // Reachable whenever a silence ends the session while the partials had run past the
+            // last final, which is the ordinary way of trailing off mid-sentence.
+            mVoiceStreamed.setLength(0);
+            mVoiceFrozen.setLength(0);
+        }
+
+        @Override
         public void onVoiceInputPartial(@NonNull final String text) {
             // Streamed into the field as it arrives, a few words at a time. Safe because the engine
             // does not take words back — only punctuation is revised, and only when an utterance is

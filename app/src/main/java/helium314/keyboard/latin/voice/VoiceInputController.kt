@@ -35,6 +35,12 @@ class VoiceInputController(private val context: Context, private val listener: L
 
     interface Listener {
         fun onVoiceInputStarted()
+        /**
+         * The engine is listening on a session that will send its text from the beginning. Fires
+         * once per [SpeechRecognizer.startListening], not per utterance, so it marks the points
+         * where nothing streamed so far will be extended or revised again.
+         */
+        fun onVoiceInputListening()
         fun onVoiceInputPartial(text: String)
         fun onVoiceInputFinal(text: String)
         fun onVoiceInputRms(rmsDb: Float)
@@ -365,6 +371,7 @@ class VoiceInputController(private val context: Context, private val listener: L
         override fun onReadyForSpeech(params: Bundle?) {
             Log.i(TAG, "onReadyForSpeech")
             restartPending = false // listening again, so a further restart is allowed
+            listener.onVoiceInputListening()
         }
 
         override fun onBeginningOfSpeech() {

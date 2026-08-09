@@ -1592,19 +1592,25 @@ public class LatinIME extends InputMethodService implements
      * Normally the frozen text is a prefix of what the engine is still sending, since it is the
      * beginning of the same utterance, and splitting on its length is exact.
      *
-     * When it is not a prefix the engine has rewritten something behind the user's edit, and there
-     * is no good answer: that text cannot be corrected, so whatever is written next either repeats
-     * part of it or drops part of what was said. Splitting on the length -- what happens here --
-     * picks a third option, and it is the worst of them. Measured 2026-08-09: the freeze fell inside
-     * "Miller's" while the engine still had it as "Mill.", and the split wrote the remainder as a
-     * word that was never spoken:
+     * When it is not a prefix the engine has rewritten something behind the user's edit. That text
+     * cannot be corrected -- it is on the far side of what the user typed -- so whatever is written
+     * next has to pay one of three costs: cut a word, drop a word, or drop a clause. Splitting on
+     * the length cuts. Measured 2026-08-09: the freeze fell inside "Miller's" while the engine still
+     * had it as "Mill.", and the split wrote the remainder as a word that was never spoken:
      *
      *   frozen=199 [... that Max Mill.]   engine gives [... that Max Miller's, his nephew.]
      *   split at 199                   -> writes "r's, his nephew."
      *
      * Seven of twelve freezes in that session also lost the leading space every other segment
-     * carries, for the same reason. Left as it is deliberately, until a log says which of the three
-     * costs is the one to pay; the divergence is logged so the next one can count them.
+     * carries, for the same reason.
+     *
+     * Cutting is the chosen cost (decided 2026-08-09, having seen all three): the two alternatives
+     * are resuming at the next word boundary, which drops the fragment, and re-baselining on the
+     * whole payload, which drops however much was said between the edit and the next agreement.
+     * Both lose speech silently. This one keeps every character the engine heard and puts the damage
+     * somewhere a reader can see it, next to the edit that caused it.
+     *
+     * The divergence is logged so its frequency stays visible rather than being assumed.
      */
     private int frozenPrefixLength(@NonNull final String fullText) {
         final int frozen = Math.min(mVoiceFrozen.length(), fullText.length());

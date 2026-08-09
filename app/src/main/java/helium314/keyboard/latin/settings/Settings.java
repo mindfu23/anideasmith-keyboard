@@ -145,6 +145,7 @@ public final class Settings implements SharedPreferences.OnSharedPreferenceChang
     public static final String PREFS_LONG_PRESS_SYMBOLS_FOR_NUMPAD = "long_press_symbols_for_numpad";
     public static final String PREF_USE_INLINE_VOICE_INPUT = "use_inline_voice_input";
     public static final String PREF_VOICE_INPUT_AUTO_PUNCTUATION = "voice_input_auto_punctuation";
+    public static final String PREF_VOICE_INPUT_SPOKEN_PUNCTUATION = "voice_input_spoken_punctuation";
     public static final String PREF_VOICE_INPUT_PREFER_OFFLINE = "voice_input_prefer_offline";
     public static final String PREF_VOICE_INPUT_SERVICE = "voice_input_service";
     public static final String PREF_VOICE_INPUT_KEEP_TYPING = "voice_input_keep_typing";

@@ -75,6 +75,7 @@ import helium314.keyboard.latin.settings.SettingsValues;
 import helium314.keyboard.latin.suggestions.SuggestionStripView;
 import helium314.keyboard.latin.suggestions.SuggestionStripViewAccessor;
 import helium314.keyboard.latin.touchinputconsumer.GestureConsumer;
+import helium314.keyboard.latin.voice.SpokenPunctuation;
 import helium314.keyboard.latin.voice.VoiceInputController;
 import helium314.keyboard.latin.voice.VoiceInputStrip;
 import helium314.keyboard.latin.voice.VoiceSessionPolicy;
@@ -158,6 +159,9 @@ public class LatinIME extends InputMethodService implements
     // it. The engine repeats the whole utterance in every partial, so it has to stay in the
     // comparison; it is only the delete that must keep off it.
     @NonNull private final StringBuilder mVoiceFrozen = new StringBuilder();
+    // whether what precedes the current utterance finishes a sentence, and so whether the utterance
+    // may begin one. Read from the document once per utterance, while our own run is still empty.
+    private boolean mVoiceAfterSentenceEnd = true;
     // whether the dictation state is currently being shown: the highlighted voice key and the
     // space bar label. Not a view — see showDictationUi for the row that used to live here.
     private boolean mVoiceInputUiShown = false;
@@ -1540,7 +1544,11 @@ public class LatinIME extends InputMethodService implements
         mVoiceInputGotResults = false;
         mVoiceInputController.start(mRichImm.getCurrentSubtypeLocale(),
                 settingsValues.mVoiceInputPreferOffline,
-                settingsValues.mVoiceInputAutoPunctuation,
+                // Spoken punctuation asks the engine for raw words and does the marks itself, so it
+                // has to stop the engine adding its own. Measured: with formatting on, 34 of 34
+                // finals carried punctuation nobody asked for and the spoken words came through as
+                // well; with it off, none did and the words survived to be mapped.
+                settingsValues.mVoiceInputAutoPunctuation && !settingsValues.mVoiceInputSpokenPunctuation,
                 settingsValues.mVoiceInputService,
                 // the plain microphone key is always short-form; long-form comes from its own
                 // key or the long-press, and only when the user has made it available
@@ -1695,6 +1703,34 @@ public class LatinIME extends InputMethodService implements
         return stale.contentEquals(tail) ? stale.length() : -1;
     }
 
+    /** Enough of the document to see past any trailing space to the character that matters. */
+    private static final int SENTENCE_LOOKBACK = 8;
+
+    /**
+     * Apply the marks the user spoke, and take back the capitals nobody asked for.
+     *
+     * Runs before anything else touches the text, so everything downstream — the diff, the freeze,
+     * the tracker — sees only the transformed version and never learns this happened. That matters
+     * for the freeze in particular, which compares what it froze against the engine's next payload:
+     * both sides have to have been through here or neither.
+     *
+     * The document is read only while our own run is empty, which is the one moment the character
+     * before the cursor really is what precedes this utterance. Once any of it has been written the
+     * answer would be our own words. After a keystroke freezes the run the cached answer still
+     * stands, because it describes where the utterance began, which has not moved.
+     */
+    @NonNull
+    private String spokenPunctuation(@NonNull final String rawText,
+            @NonNull final RichInputConnection connection) {
+        if (!mSettings.getCurrent().mVoiceInputSpokenPunctuation) return rawText;
+        if (mVoiceStreamed.length() == 0 && mVoiceFrozen.length() == 0) {
+            mVoiceAfterSentenceEnd = SpokenPunctuation.INSTANCE.endsSentence(
+                    connection.getTextBeforeCursor(SENTENCE_LOOKBACK, 0));
+        }
+        return SpokenPunctuation.INSTANCE.capitalise(
+                SpokenPunctuation.INSTANCE.apply(rawText), mVoiceAfterSentenceEnd);
+    }
+
     /**
      * Put [fullText] on screen as the engine's latest word on this utterance, writing only what
      * changed.
@@ -1713,8 +1749,9 @@ public class LatinIME extends InputMethodService implements
      * @param finalised true when this is the engine's last word on the utterance, so what follows
      *   it belongs to the next one and is left for the partials to stream again.
      */
-    private void streamVoiceText(@NonNull final String fullText, final boolean finalised) {
+    private void streamVoiceText(@NonNull final String rawText, final boolean finalised) {
         final RichInputConnection connection = mInputLogic.mConnection;
+        final String fullText = spokenPunctuation(rawText, connection);
         // Everything the user has typed behind is off limits, so only the part of the utterance
         // dictated since then takes part in this. The engine keeps resending the whole utterance,
         // which is why the frozen part has to be subtracted rather than forgotten.

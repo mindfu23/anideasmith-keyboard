@@ -1965,11 +1965,63 @@ public final class InputLogic {
                         // here replaces it outright
                         false, SuggestedWords.INPUT_STYLE_RECORRECTION,
                         SuggestedWords.NOT_A_SEQUENCE_NUMBER);
-                mLatinIME.mHandler.setSuggestions(suggested);
+                mLatinIME.mHandler.setSuggestions(withCaseVariants(word, suggested));
             } catch (Exception e) {
                 Log.e(TAG, "error getting alternatives for the selected word", e);
             }
         });
+    }
+
+    /**
+     * Put the same word in its other capitalisations at the front of [suggested].
+     *
+     * The dictionary answers "what else could these letters be", which is the wrong question when
+     * the letters are right and only the case is wrong. Asked about "Correction" it offers
+     * "Connect i On" and the like, and never the one thing wanted: "correction". Dictation makes
+     * this the common case — the recogniser capitalises the first word of every segment and
+     * sometimes a word in the middle ("another Clause period"), so a stray capital is the most
+     * frequent thing there is to fix, and the least well served by a spelling lookup.
+     *
+     * Both directions, since the same accident happens the other way: "mark" that should be "Mark".
+     *
+     * Locale-aware, because case is: in Turkish the lower case of "I" is "ı" and not "i".
+     */
+    @NonNull
+    private SuggestedWords withCaseVariants(@NonNull final String word,
+            @NonNull final SuggestedWords suggested) {
+        final Locale locale = getDictionaryFacilitatorLocale();
+        final ArrayList<SuggestedWordInfo> withCase = new ArrayList<>();
+        // what is already in the list being built — deliberately not seeded with the selected word,
+        // so the dictionary's copy of it survives and "leave it alone" stays on offer
+        final ArrayList<String> inList = new ArrayList<>();
+        // score above anything the dictionary returns, so these sit where the user can reach them
+        int score = SuggestedWords.MAX_SUGGESTIONS + 2;
+        for (final String variant : new String[] { word.toLowerCase(locale), capitalise(word, locale) }) {
+            if (variant.isEmpty() || variant.equals(word) || inList.contains(variant)) continue;
+            inList.add(variant);
+            withCase.add(new SuggestedWordInfo(variant, "" /* prevWordsContext */, score--,
+                    SuggestedWordInfo.KIND_RESUMED, Dictionary.DICTIONARY_RESUMED,
+                    SuggestedWordInfo.NOT_AN_INDEX, SuggestedWordInfo.NOT_A_CONFIDENCE));
+        }
+        if (withCase.isEmpty()) return suggested;
+        for (int i = 0; i < suggested.size(); i++) {
+            final SuggestedWordInfo info = suggested.getInfo(i);
+            if (inList.contains(info.mWord)) continue;
+            inList.add(info.mWord);
+            withCase.add(info);
+        }
+        return new SuggestedWords(withCase, null /* rawSuggestions */, suggested.getTypedWordInfoOrNull(),
+                false /* typedWordValid */, false /* willAutoCorrect */, false /* isObsoleteSuggestions */,
+                SuggestedWords.INPUT_STYLE_RECORRECTION, SuggestedWords.NOT_A_SEQUENCE_NUMBER);
+    }
+
+    /** First letter up, the rest as it stands — so "mcDonald" becomes "McDonald", not "Mcdonald". */
+    @NonNull
+    private static String capitalise(@NonNull final String word, @NonNull final Locale locale) {
+        if (word.isEmpty()) return word;
+        final int first = word.codePointAt(0);
+        final int firstLength = Character.charCount(first);
+        return new String(Character.toChars(first)).toUpperCase(locale) + word.substring(firstLength);
     }
 
     private void restartSuggestions(final TextRange range) {

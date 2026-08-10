@@ -290,10 +290,12 @@ class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int)
         // to show text the field was already showing. The row carries no text now and fits beside
         // them.
         if (!active) return
-        // the pulse belongs to the key that is actually running; a short-form session gets a
-        // steady highlight because it ends on its own and does not need watching
+        // The pulse goes on the key that is running, whichever mode that is. Short form used to get
+        // a steady highlight instead, on the grounds that it ends by itself and needs no watching --
+        // but it is also the key that stops it, and a still highlight is easy to read as a key that
+        // merely happens to be shaded. The two modes have different icons; they do not also need
+        // different liveness.
         val key = voiceKeyView(if (longForm) ToolbarKey.VOICE_LONG_FORM else ToolbarKey.VOICE) ?: return
-        val pulsing = longForm
         // the enter key's colour, so "live" reads the same way it does elsewhere on the keyboard
         val color = Settings.getValues().mColors.get(ColorType.ACTION_KEY_BACKGROUND) or -0x1000000
         val background = GradientDrawable().apply {
@@ -302,7 +304,6 @@ class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int)
             gradientRadius = resources.getDimensionPixelSize(R.dimen.config_suggestions_strip_height) / 2.1f
         }
         key.background = background
-        if (!pulsing) return
         voicePulse = ValueAnimator.ofInt(PULSE_MIN_ALPHA, 255).apply {
             duration = PULSE_MILLIS
             repeatMode = ValueAnimator.REVERSE

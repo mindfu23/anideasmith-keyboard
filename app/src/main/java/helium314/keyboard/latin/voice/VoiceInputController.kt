@@ -497,20 +497,19 @@ class VoiceInputController(private val context: Context, private val listener: L
         }
 
         /**
-         * The continuous session ended by itself, after a silence the engine considers final. If
-         * the user has not stopped dictation, open another one — that costs one earcon, but only
-         * per silence rather than after each sentence.
+         * The continuous session ended by itself, after a silence the engine considers final.
          *
-         * Short-form gets this too. The engine ignores the silence length asked for and ends the
-         * session after six to seventeen seconds, so ending dictation here meant a pause to think
-         * closed the microphone mid-sentence — five times in one afternoon's testing. The cap in
-         * [VoiceSessionPolicy.shouldReopenSegmentedSession] is what still releases it eventually.
+         * Long form opens another one, because prose has pauses longer than the engine's patience
+         * and the session has to outlast them. Short form takes the engine at its word and stops:
+         * one thought at a time is what it is for, and the engine deciding it has heard the end of
+         * one is the same judgement the user would have made.
          */
         override fun onEndOfSegmentedSession() {
-            Log.i(TAG, "onEndOfSegmentedSession (active=$isActive, empty=$consecutiveErrors)")
+            val idle = SystemClock.uptimeMillis() - lastResultAt
+            Log.i(TAG, "onEndOfSegmentedSession (active=$isActive, longForm=$longForm, idle=${idle}ms)")
             if (cancelling) return
-            if (VoiceSessionPolicy.shouldReopenSegmentedSession(isActive, longForm, consecutiveErrors)) {
-                // a session that ended in silence counts the same as a silence timeout would
+            if (VoiceSessionPolicy.shouldReopenSegmentedSession(isActive, longForm, idle)) {
+                // a session that ended in silence backs off the same way a silence timeout does
                 consecutiveErrors++
                 restartListening()
                 return

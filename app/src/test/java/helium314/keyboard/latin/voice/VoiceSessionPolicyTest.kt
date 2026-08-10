@@ -360,29 +360,34 @@ class VoiceSessionPolicyTest {
 
     // --- the session that ended while the user was still thinking -----------------------------
 
-    @Test fun aPauseDoesNotEndShortFormDictation() {
-        // the engine ends its session after 6-17s whatever silence length the intent asks for, so
-        // ending dictation there closed the microphone mid-sentence
-        assertTrue(VoiceSessionPolicy.shouldReopenSegmentedSession(
-            isActive = true, longForm = false, emptySessions = 0))
-        assertTrue(VoiceSessionPolicy.shouldReopenSegmentedSession(
-            isActive = true, longForm = false,
-            emptySessions = VoiceSessionPolicy.MAX_CONSECUTIVE_ERRORS - 1))
-    }
-
-    @Test fun aForgottenShortFormSessionStillReleasesTheMicrophone() {
+    @Test fun shortFormStopsWhenTheEngineSaysTheThoughtIsOver() {
+        // one thought at a time is what short form is for, so the engine deciding it has heard the
+        // end of one is the same judgement the user would have made
         assertFalse(VoiceSessionPolicy.shouldReopenSegmentedSession(
-            isActive = true, longForm = false,
-            emptySessions = VoiceSessionPolicy.MAX_CONSECUTIVE_ERRORS))
+            isActive = true, longForm = false, msSinceLastResult = 0))
+        assertFalse(VoiceSessionPolicy.shouldReopenSegmentedSession(
+            isActive = true, longForm = false, msSinceLastResult = 1000))
     }
 
-    @Test fun longFormReopensThroughAnySilence() {
+    @Test fun longFormOutlastsThePausesInProse() {
+        // the engine gives up after 6-17s whatever the intent asks for, and prose pauses for longer
         assertTrue(VoiceSessionPolicy.shouldReopenSegmentedSession(
-            isActive = true, longForm = true, emptySessions = 500))
+            isActive = true, longForm = true, msSinceLastResult = 0))
+        assertTrue(VoiceSessionPolicy.shouldReopenSegmentedSession(
+            isActive = true, longForm = true,
+            msSinceLastResult = VoiceSessionPolicy.LONG_FORM_IDLE_TIMEOUT_MS - 1))
+    }
+
+    @Test fun aForgottenLongFormSessionStillReleasesTheMicrophone() {
+        // counting empty sessions could not end this: any recognised word resets the count, and a
+        // room with a television in it produces words. Time since real text is the only ceiling.
+        assertFalse(VoiceSessionPolicy.shouldReopenSegmentedSession(
+            isActive = true, longForm = true,
+            msSinceLastResult = VoiceSessionPolicy.LONG_FORM_IDLE_TIMEOUT_MS))
     }
 
     @Test fun stoppingEndsTheSessionRatherThanReopeningIt() {
         assertFalse(VoiceSessionPolicy.shouldReopenSegmentedSession(
-            isActive = false, longForm = true, emptySessions = 0))
+            isActive = false, longForm = true, msSinceLastResult = 0))
     }
 }

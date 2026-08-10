@@ -142,16 +142,22 @@ internal object VoiceSessionPolicy {
     /**
      * Whether the end of a segmented session should open another one rather than end dictation.
      *
-     * The engine ends its own session after whatever silence it considers final, which on an S24 is
-     * six to seventeen seconds however long a silence the intent asks for. Treating that as the end
-     * of dictation means a pause to think closes the microphone mid-thought. It is the same event
-     * the restart loop sees as a silence timeout, so it gets the same answer and the same cap: a
-     * phone left listening on a table still lets go of the microphone.
+     * Long form only. The engine ends its own session after whatever silence it considers final,
+     * measured on an S24 at six to seventeen seconds however long a silence the intent asks for, and
+     * the two modes want opposite things from that. Long-form prose is full of pauses longer than
+     * that and the session has to survive them. Short form is one thought at a time, so the engine
+     * deciding it has heard the end of one is exactly the signal to stop, and reopening only holds
+     * the microphone past the point the user stopped talking.
      *
-     * @param emptySessions consecutive sessions that produced no text; any result resets it.
+     * Reopening does not carry on forever. The count of empty sessions cannot end it — any recognised
+     * word resets that, and a room with a television in it produces words — so the ceiling is time
+     * since the last recognised text, the same backstop [onError] uses. Without one, a long-form
+     * session put down mid-sentence would reopen every ten seconds until the battery went.
+     *
+     * @param msSinceLastResult time since the engine last recognised anything, not since the start.
      */
-    fun shouldReopenSegmentedSession(isActive: Boolean, longForm: Boolean, emptySessions: Int) =
-        isActive && emptySessions < (if (longForm) NO_ERROR_CAP else MAX_CONSECUTIVE_ERRORS)
+    fun shouldReopenSegmentedSession(isActive: Boolean, longForm: Boolean, msSinceLastResult: Long) =
+        isActive && longForm && msSinceLastResult < LONG_FORM_IDLE_TIMEOUT_MS
 
     /** Errors meaning "this utterance had nothing in it", not "dictation is over". */
     fun isRestartable(error: Int) =

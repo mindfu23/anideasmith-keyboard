@@ -35,6 +35,23 @@ class SpokenPunctuationTest {
         assertEquals("wow!", apply("wow exclamation mark"))
     }
 
+    @Test fun aSmileyIsSpacedLikeTheWordItStandsInFor() {
+        // Gboard produces ":-)" for this and a SpeechRecognizer client gets the words, so the
+        // mapping is ours to make. Spaced as a word: not hugging the one before it like a comma.
+        assertEquals("awesome :-)", apply("awesome smiley face"))
+        assertEquals("awesome :-) today", apply("awesome smiley face today"))
+        assertEquals(" :-)", apply(" Smiley Face"))
+    }
+
+    @Test fun aSmileySaidFastStillCounts() {
+        // the observation that prompted the hyphen matcher in the first place
+        assertEquals("awesome :-)", apply("awesome Smiley-Face"))
+    }
+
+    @Test fun theEscapeGivesBackTheWordsSmileyFace() {
+        assertEquals("the words smiley face here", apply("the words literal word smiley face here"))
+    }
+
     @Test fun quotesLeanTheWayTheyPoint() {
         // an opening quote takes the space before it, a closing one the space after
         assertEquals("he said \"hello\" once", apply("he said open quotes hello close quotes once"))

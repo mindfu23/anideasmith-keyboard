@@ -29,6 +29,9 @@ internal object SpokenPunctuation {
     private fun closing(text: String, vararg words: String) = Mark(words.toList(), text, false, true)
     private fun opening(text: String, vararg words: String) = Mark(words.toList(), text, true, false)
 
+    /** Spaced like a word on both sides, because that is what it stands in for. */
+    private fun standalone(text: String, vararg words: String) = Mark(words.toList(), text, true, true)
+
     /**
      * Longest phrase first, so "question mark" is not read as the word "question" followed by the
      * word "mark". Both spellings of the sentence-enders are here because people say both.
@@ -42,6 +45,14 @@ internal object SpokenPunctuation {
         opening("\"", "open", "quotes"),
         opening("\"", "open", "quote"),
         closing(".", "full", "stop"),
+        // Gboard turns this into ":-)" and a SpeechRecognizer client gets the words — verified by
+        // A/B in one app, 2026-08-10 — because Gboard's dictation is not on this API and no extra
+        // buys the behaviour. ":-)" rather than ":)" to match what people are used to from it.
+        //
+        // Spaced as a word, not as a mark: "Awesome smiley face" is "Awesome :-)", with the space.
+        // Deliberately only this one for now. A large set of these turns ordinary phrases into
+        // commands, which is the "Let's see how indent works" problem with far more surface.
+        standalone(":-)", "smiley", "face"),
         // A line break and an indent are characters like any other here, so they land where they
         // were spoken and the ordinary streaming puts them there. What they are not is harmless:
         // the app answers a newline with a bullet and an indent of its own, behind text this class

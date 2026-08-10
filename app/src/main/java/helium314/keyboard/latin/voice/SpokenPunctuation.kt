@@ -65,6 +65,31 @@ internal object SpokenPunctuation {
     private val OUTDENT = listOf("outdent")
 
     /**
+     * Say this before a mark's name to get the name instead of the mark.
+     *
+     * Windows Speech Recognition has had the idea for years, as "literal <word>"; Dragon has no
+     * escape at all and tells people to pause around punctuation instead. The second word is this
+     * fork's, and it earns its place: "literal" alone turns up in ordinary speech often enough to
+     * misfire, and the pair almost never does.
+     *
+     * It only takes effect when a mark actually follows, so "the literal word for it" is left alone
+     * and only "the literal word comma" is read as an escape. What no escape can do is escape
+     * itself: the marker is consumed, so saying "the literal word comma" yields "the comma", and
+     * there is no way to ask for the words "literal word" followed by the word "comma". Windows has
+     * the same hole and it is not a solvable one — a prefix cannot both be a command and not be.
+     */
+    private val ESCAPE = listOf("literal", "word")
+
+    /** The mark being escaped at [from], or null if there is no escape there. */
+    private fun escapeAt(tokens: List<String>, from: Int): Mark? {
+        if (ESCAPE.size > tokens.size - from) return null
+        ESCAPE.forEachIndexed { offset, word ->
+            if (!tokens[from + offset].equals(word, ignoreCase = true)) return null
+        }
+        return markAt(tokens, from + ESCAPE.size)
+    }
+
+    /**
      * How many times the text asks to unindent.
      *
      * Counted rather than mapped because the mark it produces is nothing at all: a shift-Tab has to
@@ -76,9 +101,23 @@ internal object SpokenPunctuation {
     fun outdents(text: String): Int {
         if (text.isBlank()) return 0
         val tokens = text.trim().split(WHITESPACE)
-        return tokens.indices.count { i ->
-            tokens[i].equals(OUTDENT[0], ignoreCase = true) && markAt(tokens, i)?.words == OUTDENT
+        var count = 0
+        var i = 0
+        while (i < tokens.size) {
+            val escaped = escapeAt(tokens, i)
+            if (escaped != null) {
+                i += ESCAPE.size + escaped.words.size // spoken as words, so it commands nothing
+                continue
+            }
+            val mark = markAt(tokens, i)
+            if (mark == null) {
+                i++
+            } else {
+                if (mark.words == OUTDENT) count++
+                i += mark.words.size
+            }
         }
+        return count
     }
 
     private val WHITESPACE = Regex("\\s+")
@@ -119,6 +158,18 @@ internal object SpokenPunctuation {
         var spaceOwed = false
         var i = 0
         while (i < tokens.size) {
+            val escaped = escapeAt(tokens, i)
+            if (escaped != null) {
+                // the words as they were spoken rather than the canonical spelling, so "newline"
+                // comes back as "newline" and not as "new line"
+                for (k in escaped.words.indices) {
+                    if (spaceOwed && out.isNotEmpty()) out.append(' ')
+                    out.append(tokens[i + ESCAPE.size + k])
+                    spaceOwed = true
+                }
+                i += ESCAPE.size + escaped.words.size
+                continue
+            }
             val mark = markAt(tokens, i)
             if (mark == null) {
                 if (spaceOwed && out.isNotEmpty()) out.append(' ')

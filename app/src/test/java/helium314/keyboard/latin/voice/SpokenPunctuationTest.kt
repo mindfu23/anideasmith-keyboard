@@ -127,6 +127,52 @@ class SpokenPunctuationTest {
         assertFalse(SpokenPunctuation.STRUCTURAL.contains(','))
     }
 
+    // --- saying the name instead of the mark ----------------------------------------------------
+
+    @Test fun literalWordGivesTheNameNotTheMark() {
+        assertEquals("say comma here", apply("say literal word comma here"))
+        assertEquals("say new line here", apply("say literal word new line here"))
+        assertEquals("say question mark here", apply("say literal word question mark here"))
+    }
+
+    @Test fun theWordsComeBackAsSpoken() {
+        // "newline" is one word and "new line" two; both mean the mark, and each escapes to itself
+        assertEquals("say newline here", apply("say literal word newline here"))
+    }
+
+    @Test fun theEscapeIsInertWithNoMarkAfterIt() {
+        // "the literal word for it" is ordinary prose and has to survive as such
+        assertEquals("the literal word for it", apply("the literal word for it"))
+        assertEquals("a literal word", apply("a literal word"))
+    }
+
+    @Test fun theEscapeIgnoresCaseButDoesNotChangeIt() {
+        // the recogniser capitalises segment starts, so the marker arrives capitalised and has to
+        // still be recognised. What follows comes back exactly as spoken -- deciding its case is
+        // capitalise's job, and doing it here as well would fight it.
+        assertEquals("Comma", apply("Literal Word Comma"))
+        assertEquals("comma", SpokenPunctuation.capitalise(apply("Literal Word Comma"), false))
+    }
+
+    @Test fun anEscapedOutdentDoesNotOutdent() {
+        assertEquals(0, SpokenPunctuation.outdents("say literal word outdent here"))
+        assertEquals("say outdent here", apply("say literal word outdent here"))
+        // and an unescaped one still does
+        assertEquals(1, SpokenPunctuation.outdents("say outdent here"))
+    }
+
+    @Test fun outdentsAreCountedPastOtherMarks() {
+        // stepping one token at a time would find "outdent" inside a longer mark's words
+        assertEquals(1, SpokenPunctuation.outdents("one question mark outdent two"))
+    }
+
+    @Test fun theWholeExampleFromTheRequest() {
+        val spoken = "In this prose I am saying the phrase open quote literal word new line close quote " +
+                "in order to add a literal word new line after this sentence colon new line and then continue"
+        assertEquals("In this prose I am saying the phrase \"new line\" " +
+                "in order to add a new line after this sentence:\nand then continue", apply(spoken))
+    }
+
     // --- capitalisation -----------------------------------------------------------------------
 
     @Test fun aSegmentAfterNoPunctuationDoesNotStartASentence() {

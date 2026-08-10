@@ -45,10 +45,19 @@ class SpokenPunctuationTest {
         assertEquals("first, second.", apply("first Comma second Period"))
     }
 
-    @Test fun aMarkOnItsOwnIsJustTheMark() {
-        // measured: the engine segments at pauses, so " Comma" arrives as a whole payload
+    @Test fun aMarkOnItsOwnDoesNotBringTheSegmentSpaceWithIt() {
+        // Pause before saying it and the mark arrives as its own payload, leading space and all.
+        // Keeping that space put one in front of the comma, which is what a real session produced:
+        // "the end of the last word and , the punctuation".
         assertEquals(",", apply("Comma"))
-        assertEquals(" ,", apply(" Comma"))
+        assertEquals(",", apply(" Comma"))
+        assertEquals(".", apply(" Period"))
+        assertEquals(". New line", apply(" Period New line"))
+    }
+
+    @Test fun anOpeningQuoteOnItsOwnKeepsTheSpace() {
+        // it stands where a word would, so it is spaced like one
+        assertEquals(" \"", apply(" open quotes"))
     }
 
     @Test fun theLeadingSpaceIsKept() {

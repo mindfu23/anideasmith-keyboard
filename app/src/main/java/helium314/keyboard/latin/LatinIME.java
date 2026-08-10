@@ -1637,6 +1637,12 @@ public class LatinIME extends InputMethodService implements
     private int frozenPrefixLength(@NonNull final String fullText) {
         final int frozen = Math.min(mVoiceFrozen.length(), fullText.length());
         if (frozen == 0 || startsWithFrozen(fullText)) return frozen;
+        // The engine adds a leading space to a final that its partials did not have, which moves
+        // every character along by one and makes an unchanged utterance look like a different one.
+        // Finding the frozen text a character or two in says that is all that happened.
+        final int shifted = mVoiceFrozen.length() <= fullText.length()
+                ? fullText.indexOf(mVoiceFrozen.toString()) : -1;
+        if (shifted >= 0 && shifted <= LEADING_SHIFT_SLACK) return shifted + mVoiceFrozen.length();
         final int agreed = VoiceSessionPolicy.INSTANCE.agreedPrefixLength(mVoiceFrozen.toString(), fullText);
         if (DebugFlags.DEBUG_ENABLED) {
             Log.w(TAG, "engine revised behind the freeze: agreed=" + agreed
@@ -1645,6 +1651,13 @@ public class LatinIME extends InputMethodService implements
         }
         return agreed == 0 ? 0 : frozen;
     }
+
+    /**
+     * How far into the engine's text the frozen part may have moved and still be the same text. Only
+     * wide enough for the space a final gains over its partials — far enough to find a repetition
+     * would be far enough to delete the wrong one.
+     */
+    private static final int LEADING_SHIFT_SLACK = 2;
 
     private boolean startsWithFrozen(@NonNull final String fullText) {
         if (fullText.length() < mVoiceFrozen.length()) return false;

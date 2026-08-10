@@ -74,8 +74,14 @@ internal object SpokenPunctuation {
      */
     fun apply(text: String): String {
         if (text.isBlank()) return text
-        val leading = if (text[0].isWhitespace()) " " else ""
         val tokens = text.trim().split(WHITESPACE)
+        // Segments arrive with a leading space, which is what separates them from the last one. A
+        // closing mark does not want it: pause before saying "comma" and the mark lands as its own
+        // segment, so keeping the space puts one in front of the comma — "the end of the last word
+        // and , the punctuation". An opening quote does want it, being a word as far as spacing is
+        // concerned.
+        val first = markAt(tokens, 0)
+        val leading = if (text[0].isWhitespace() && (first == null || first.spaceBefore)) " " else ""
         val out = StringBuilder()
         var spaceOwed = false
         var i = 0

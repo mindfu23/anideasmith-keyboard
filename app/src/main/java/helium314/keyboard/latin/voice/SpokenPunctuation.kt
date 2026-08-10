@@ -125,10 +125,19 @@ internal object SpokenPunctuation {
     /** Characters that end a sentence, and so make the next word start one. */
     private const val SENTENCE_ENDS = ".?!"
 
+    /**
+     * The same, plus a line break. Starting a new line starts a sentence whether or not the last one
+     * was finished off with a mark — a heading, a list item or a line broken mid-thought all read as
+     * beginnings, and none of them carries a full stop.
+     */
+    private const val SENTENCE_STARTS_AFTER = "$SENTENCE_ENDS\n"
+
     fun endsSentence(text: CharSequence?): Boolean {
         if (text == null) return true // nothing before it is the start of something
         for (i in text.length - 1 downTo 0) {
             val c = text[i]
+            // checked before the whitespace skip, which would otherwise step straight over it
+            if (c == '\n') return true
             if (c.isWhitespace()) continue
             return SENTENCE_ENDS.indexOf(c) >= 0
         }
@@ -200,7 +209,7 @@ internal object SpokenPunctuation {
      * gone entirely — so it has to be undone here.
      *
      * Only two letters in the text are ever touched: the first one, and the first after a sentence
-     * mark. Everything between them is left exactly as the engine sent it, which keeps proper nouns
+     * mark or a line break. Everything else is left exactly as the engine sent it, which keeps nouns
      * and "I" intact. The engine's other habit — a stray capital mid-sentence, "another Clause
      * period" — survives this deliberately, because telling a name from a mistake is not something a
      * rule can do. Selecting the word offers it in the other case instead.
@@ -219,7 +228,7 @@ internal object SpokenPunctuation {
                 }
                 seenFirstLetter = true
                 startsSentence = false
-            } else if (SENTENCE_ENDS.indexOf(c) >= 0) {
+            } else if (SENTENCE_STARTS_AFTER.indexOf(c) >= 0) {
                 startsSentence = true
                 seenFirstLetter = true
             }

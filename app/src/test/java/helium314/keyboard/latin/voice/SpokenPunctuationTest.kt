@@ -215,6 +215,29 @@ class SpokenPunctuationTest {
         assertFalse(SpokenPunctuation.endsSentence("word "))
     }
 
+    @Test fun aNewLineStartsASentence() {
+        // a heading, a list item or a line broken mid-thought all read as beginnings, and none of
+        // them carries a full stop
+        assertEquals("one\nTwo", SpokenPunctuation.capitalise("one\ntwo", false))
+        assertEquals("done.\nNext", SpokenPunctuation.capitalise(apply("done period new line next"), false))
+    }
+
+    @Test fun aNewLineBehindTheTextStartsOneToo() {
+        // the previous segment ended with a line break, so this one begins a sentence even though
+        // nothing punctuated it
+        assertTrue(SpokenPunctuation.endsSentence("a list item\n"))
+        assertTrue(SpokenPunctuation.endsSentence("a list item\n  "))
+        assertFalse(SpokenPunctuation.endsSentence("a list item "))
+    }
+
+    @Test fun theWholeExampleFromTheRequestThroughBothPasses() {
+        val spoken = "In this prose I am saying the phrase open quote literal word new line close quote " +
+                "in order to add a literal word new line after this sentence colon new line and then continue"
+        assertEquals("In this prose I am saying the phrase \"new line\" " +
+                "in order to add a new line after this sentence:\nAnd then continue",
+            SpokenPunctuation.capitalise(apply(spoken), true))
+    }
+
     @Test fun anEmptyFieldBeginsASentence() {
         assertTrue(SpokenPunctuation.endsSentence(null))
         assertTrue(SpokenPunctuation.endsSentence(""))

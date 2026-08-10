@@ -40,6 +40,28 @@ class SpokenPunctuationTest {
         assertEquals("he said \"hello\" once", apply("he said open quotes hello close quotes once"))
     }
 
+    @Test fun aPhraseSaidFastArrivesHyphenatedAndStillCounts() {
+        // observed on "smiley face": said at speed the recogniser returns one token, "Smiley-Face".
+        // The same happens to any multi-word command.
+        assertEquals("really?", apply("really question-mark"))
+        assertEquals("wow!", apply("wow Exclamation-Point"))
+        assertEquals("done.\nnext", apply("done period new-line next"))
+    }
+
+    @Test fun hyphenatedOrdinaryWordsAreNotTakenApart() {
+        // splitting the text on hyphens would have put "low-carb" back together with a space
+        assertEquals("going low-carb but not no-carb", apply("going low-carb but not no-carb"))
+        assertEquals("a smiley-faced person", apply("a smiley-faced person"))
+    }
+
+    @Test fun theEscapeWorksOnAHyphenatedPhraseToo() {
+        // and gives back the hyphen, since it gives back what was said: run the phrase together
+        // fast enough for the recogniser to hyphenate it and that is what was said
+        assertEquals("say question-mark here", apply("say literal word question-mark here"))
+        assertEquals("say question-mark here", apply("say literal-word question-mark here"))
+        assertEquals(0, SpokenPunctuation.outdents("say literal word out-dent here"))
+    }
+
     @Test fun theEngineCapitalisesTheseSoMatchingIgnoresCase() {
         // every segment arrives capitalised, so the mark is as likely to be "Comma" as "comma"
         assertEquals("first, second.", apply("first Comma second Period"))

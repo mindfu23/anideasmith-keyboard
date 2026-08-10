@@ -80,13 +80,15 @@ internal object SpokenPunctuation {
      */
     private val ESCAPE = listOf("literal", "word")
 
-    /** The mark being escaped at [from], or null if there is no escape there. */
-    private fun escapeAt(tokens: List<String>, from: Int): Mark? {
-        if (ESCAPE.size > tokens.size - from) return null
-        ESCAPE.forEachIndexed { offset, word ->
-            if (!tokens[from + offset].equals(word, ignoreCase = true)) return null
-        }
-        return markAt(tokens, from + ESCAPE.size)
+    /**
+     * Tokens taken by the escape and by the mark it escapes, or null if there is no escape at [from].
+     * Both are counted, because either may have been run together into one token.
+     */
+    private fun escapeAt(tokens: List<String>, from: Int): Pair<Int, Int>? {
+        val escape = phraseAt(tokens, from, ESCAPE)
+        if (escape == 0) return null
+        val mark = markAt(tokens, from + escape) ?: return null
+        return escape to mark.tokens
     }
 
     /**
@@ -106,15 +108,15 @@ internal object SpokenPunctuation {
         while (i < tokens.size) {
             val escaped = escapeAt(tokens, i)
             if (escaped != null) {
-                i += ESCAPE.size + escaped.words.size // spoken as words, so it commands nothing
+                i += escaped.first + escaped.second // spoken as words, so it commands nothing
                 continue
             }
-            val mark = markAt(tokens, i)
-            if (mark == null) {
+            val match = markAt(tokens, i)
+            if (match == null) {
                 i++
             } else {
-                if (mark.words == OUTDENT) count++
-                i += mark.words.size
+                if (match.mark.words == OUTDENT) count++
+                i += match.tokens
             }
         }
         return count
@@ -161,7 +163,7 @@ internal object SpokenPunctuation {
         // segment, so keeping the space puts one in front of the comma — "the end of the last word
         // and , the punctuation". An opening quote does want it, being a word as far as spacing is
         // concerned.
-        val first = markAt(tokens, 0)
+        val first = markAt(tokens, 0)?.mark
         val leading = if (text[0].isWhitespace() && (first == null || first.spaceBefore)) " " else ""
         val out = StringBuilder()
         var spaceOwed = false
@@ -169,35 +171,64 @@ internal object SpokenPunctuation {
         while (i < tokens.size) {
             val escaped = escapeAt(tokens, i)
             if (escaped != null) {
+                val (escapeTokens, markTokens) = escaped
                 // the words as they were spoken rather than the canonical spelling, so "newline"
                 // comes back as "newline" and not as "new line"
-                for (k in escaped.words.indices) {
+                for (k in 0 until markTokens) {
                     if (spaceOwed && out.isNotEmpty()) out.append(' ')
-                    out.append(tokens[i + ESCAPE.size + k])
+                    out.append(tokens[i + escapeTokens + k])
                     spaceOwed = true
                 }
-                i += ESCAPE.size + escaped.words.size
+                i += escapeTokens + markTokens
                 continue
             }
-            val mark = markAt(tokens, i)
-            if (mark == null) {
+            val match = markAt(tokens, i)
+            if (match == null) {
                 if (spaceOwed && out.isNotEmpty()) out.append(' ')
                 out.append(tokens[i])
                 spaceOwed = true
                 i++
             } else {
+                val mark = match.mark
                 if (mark.spaceBefore && out.isNotEmpty()) out.append(' ')
                 out.append(mark.text)
                 spaceOwed = mark.spaceAfter
-                i += mark.words.size
+                i += match.tokens
             }
         }
         return leading + out
     }
 
-    private fun markAt(tokens: List<String>, from: Int): Mark? = MARKS.firstOrNull { mark ->
-        mark.words.size <= tokens.size - from &&
-                mark.words.withIndex().all { (offset, word) -> tokens[from + offset].equals(word, ignoreCase = true) }
+    /** A phrase found in the text, and how many tokens it turned out to occupy. */
+    private class Match(val mark: Mark, val tokens: Int)
+
+    /**
+     * How many tokens at [from] spell [words], or 0 if they do not.
+     *
+     * Said at speed the recogniser runs a phrase together with a hyphen — "Smiley-Face", one token
+     * where the same words spoken deliberately arrive as two. Observed on "smiley face"; the same
+     * will happen to "new line" and "question mark", so it belongs in the matcher rather than in a
+     * second spelling of every entry.
+     *
+     * Splitting the text on hyphens instead would be wrong: it would take "low-carb" apart and put
+     * it back with a space.
+     */
+    private fun phraseAt(tokens: List<String>, from: Int, words: List<String>): Int {
+        if (words.size <= tokens.size - from &&
+            words.withIndex().all { (offset, word) -> tokens[from + offset].equals(word, ignoreCase = true) }
+        ) return words.size
+        if (words.size > 1 && from < tokens.size &&
+            tokens[from].replace('-', ' ').equals(words.joinToString(" "), ignoreCase = true)
+        ) return 1
+        return 0
+    }
+
+    private fun markAt(tokens: List<String>, from: Int): Match? {
+        for (mark in MARKS) {
+            val n = phraseAt(tokens, from, mark.words)
+            if (n > 0) return Match(mark, n)
+        }
+        return null
     }
 
     /**

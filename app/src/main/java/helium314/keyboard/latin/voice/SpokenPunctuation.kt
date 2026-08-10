@@ -24,13 +24,23 @@ internal object SpokenPunctuation {
      * How a mark joins the words on either side of it. A closing mark hugs the word before it and
      * pushes the next one away; an opening quote does the reverse.
      */
-    private class Mark(val words: List<String>, val text: String, val spaceBefore: Boolean, val spaceAfter: Boolean)
+    private class Mark(
+        val words: List<String>, val text: String, val spaceBefore: Boolean, val spaceAfter: Boolean,
+        /**
+         * Recognised whatever the punctuation setting is. True only for entries that stand in for a
+         * *word* rather than a mark, because those are wanted by someone who is otherwise happy to
+         * let the engine punctuate — and they are the only ones that ever meet the engine's own
+         * punctuation stuck to the end of a token.
+         */
+        val alwaysOn: Boolean = false
+    )
 
     private fun closing(text: String, vararg words: String) = Mark(words.toList(), text, false, true)
     private fun opening(text: String, vararg words: String) = Mark(words.toList(), text, true, false)
 
     /** Spaced like a word on both sides, because that is what it stands in for. */
-    private fun standalone(text: String, vararg words: String) = Mark(words.toList(), text, true, true)
+    private fun standalone(text: String, vararg words: String) =
+        Mark(words.toList(), text, spaceBefore = true, spaceAfter = true, alwaysOn = true)
 
     /**
      * Longest phrase first, so "question mark" is not read as the word "question" followed by the
@@ -45,14 +55,6 @@ internal object SpokenPunctuation {
         opening("\"", "open", "quotes"),
         opening("\"", "open", "quote"),
         closing(".", "full", "stop"),
-        // Gboard turns this into ":-)" and a SpeechRecognizer client gets the words — verified by
-        // A/B in one app, 2026-08-10 — because Gboard's dictation is not on this API and no extra
-        // buys the behaviour. ":-)" rather than ":)" to match what people are used to from it.
-        //
-        // Spaced as a word, not as a mark: "Awesome smiley face" is "Awesome :-)", with the space.
-        // Deliberately only this one for now. A large set of these turns ordinary phrases into
-        // commands, which is the "Let's see how indent works" problem with far more surface.
-        standalone(":-)", "smiley", "face"),
         // A line break and an indent are characters like any other here, so they land where they
         // were spoken and the ordinary streaming puts them there. What they are not is harmless:
         // the app answers a newline with a bullet and an indent of its own, behind text this class
@@ -68,6 +70,25 @@ internal object SpokenPunctuation {
         closing(".", "period"),
         closing(";", "semicolon"),
         closing(":", "colon")
+    ).sortedByDescending { it.words.size }
+
+    /**
+     * Entries that do not belong to punctuation and so are not switched off with it.
+     *
+     * Gboard turns "smiley face" into ":-)" and a SpeechRecognizer client gets the words — verified
+     * by A/B in one app, 2026-08-10 — because Gboard's dictation is not on this API and no extra
+     * buys the behaviour. ":-)" rather than ":)" to match what people already have from it.
+     *
+     * Someone who lets the engine punctuate still wants this: it substitutes a word, not a mark, so
+     * it neither competes with the engine's punctuation nor depends on its absence. This is also the
+     * seam a personal vocabulary belongs on — names, acronyms and macros are word substitutions and
+     * want the same "on in both modes" treatment; only punctuation is a mode.
+     *
+     * Deliberately one entry. A large set turns ordinary phrases into commands, which is the
+     * "Let's see how indent works" problem with far more surface.
+     */
+    private val ALWAYS = listOf(
+        standalone(":-)", "smiley", "face")
     ).sortedByDescending { it.words.size }
 
     /** Characters this can put in the text that the app will answer with edits of its own. */
@@ -95,11 +116,10 @@ internal object SpokenPunctuation {
      * Tokens taken by the escape and by the mark it escapes, or null if there is no escape at [from].
      * Both are counted, because either may have been run together into one token.
      */
-    private fun escapeAt(tokens: List<String>, from: Int): Pair<Int, Int>? {
-        val escape = phraseAt(tokens, from, ESCAPE)
-        if (escape == 0) return null
-        val mark = markAt(tokens, from + escape) ?: return null
-        return escape to mark.tokens
+    private fun escapeAt(tokens: List<String>, from: Int, punctuation: Boolean): Pair<Int, Int>? {
+        val escape = phraseAt(tokens, from, ESCAPE, allowTrailing = false) ?: return null
+        val mark = markAt(tokens, from + escape.tokens, punctuation) ?: return null
+        return escape.tokens to mark.tokens
     }
 
     /**
@@ -117,12 +137,12 @@ internal object SpokenPunctuation {
         var count = 0
         var i = 0
         while (i < tokens.size) {
-            val escaped = escapeAt(tokens, i)
+            val escaped = escapeAt(tokens, i, punctuation = true)
             if (escaped != null) {
                 i += escaped.first + escaped.second // spoken as words, so it commands nothing
                 continue
             }
-            val match = markAt(tokens, i)
+            val match = markAt(tokens, i, punctuation = true)
             if (match == null) {
                 i++
             } else {
@@ -166,7 +186,7 @@ internal object SpokenPunctuation {
      * the ordinary correction path rewrites the tail. That is the same shape of edit the engine
      * already makes on its own, so it needs no special handling here.
      */
-    fun apply(text: String): String {
+    fun apply(text: String, punctuation: Boolean): String {
         if (text.isBlank()) return text
         val tokens = text.trim().split(WHITESPACE)
         // Segments arrive with a leading space, which is what separates them from the last one. A
@@ -174,13 +194,13 @@ internal object SpokenPunctuation {
         // segment, so keeping the space puts one in front of the comma — "the end of the last word
         // and , the punctuation". An opening quote does want it, being a word as far as spacing is
         // concerned.
-        val first = markAt(tokens, 0)?.mark
+        val first = markAt(tokens, 0, punctuation)?.mark
         val leading = if (text[0].isWhitespace() && (first == null || first.spaceBefore)) " " else ""
         val out = StringBuilder()
         var spaceOwed = false
         var i = 0
         while (i < tokens.size) {
-            val escaped = escapeAt(tokens, i)
+            val escaped = escapeAt(tokens, i, punctuation)
             if (escaped != null) {
                 val (escapeTokens, markTokens) = escaped
                 // the words as they were spoken rather than the canonical spelling, so "newline"
@@ -193,7 +213,7 @@ internal object SpokenPunctuation {
                 i += escapeTokens + markTokens
                 continue
             }
-            val match = markAt(tokens, i)
+            val match = markAt(tokens, i, punctuation)
             if (match == null) {
                 if (spaceOwed && out.isNotEmpty()) out.append(' ')
                 out.append(tokens[i])
@@ -203,15 +223,20 @@ internal object SpokenPunctuation {
                 val mark = match.mark
                 if (mark.spaceBefore && out.isNotEmpty()) out.append(' ')
                 out.append(mark.text)
-                spaceOwed = mark.spaceAfter
+                // whatever the engine punctuated the phrase with stays where it was
+                out.append(match.trailing)
+                spaceOwed = mark.spaceAfter || match.trailing.isNotEmpty()
                 i += match.tokens
             }
         }
         return leading + out
     }
 
-    /** A phrase found in the text, and how many tokens it turned out to occupy. */
-    private class Match(val mark: Mark, val tokens: Int)
+    /**
+     * A phrase found in the text: how many tokens it occupied, and any punctuation the engine had
+     * stuck to the end of it, which is re-emitted after the mark so nothing spoken is lost.
+     */
+    private class Match(val mark: Mark, val tokens: Int, val trailing: String)
 
     /**
      * How many tokens at [from] spell [words], or 0 if they do not.
@@ -224,20 +249,36 @@ internal object SpokenPunctuation {
      * Splitting the text on hyphens instead would be wrong: it would take "low-carb" apart and put
      * it back with a space.
      */
-    private fun phraseAt(tokens: List<String>, from: Int, words: List<String>): Int {
-        if (words.size <= tokens.size - from &&
-            words.withIndex().all { (offset, word) -> tokens[from + offset].equals(word, ignoreCase = true) }
-        ) return words.size
-        if (words.size > 1 && from < tokens.size &&
-            tokens[from].replace('-', ' ').equals(words.joinToString(" "), ignoreCase = true)
-        ) return 1
-        return 0
+    private fun phraseAt(tokens: List<String>, from: Int, words: List<String>, allowTrailing: Boolean): Match? {
+        val trailing = { t: String -> if (allowTrailing) t.takeLastWhile { !it.isLetterOrDigit() && it != '-' } else "" }
+        if (words.size <= tokens.size - from) {
+            val last = tokens[from + words.size - 1]
+            val trail = trailing(last)
+            val leading = (0 until words.size - 1).all { tokens[from + it].equals(words[it], ignoreCase = true) }
+            if (leading && last.dropLast(trail.length).equals(words.last(), ignoreCase = true))
+                return Match(MARKS[0], words.size, trail) // mark filled in by the caller
+        }
+        if (words.size > 1 && from < tokens.size) {
+            val t = tokens[from]
+            val trail = trailing(t)
+            if (t.dropLast(trail.length).replace('-', ' ').equals(words.joinToString(" "), ignoreCase = true))
+                return Match(MARKS[0], 1, trail)
+        }
+        return null
     }
 
-    private fun markAt(tokens: List<String>, from: Int): Match? {
-        for (mark in MARKS) {
-            val n = phraseAt(tokens, from, mark.words)
-            if (n > 0) return Match(mark, n)
+    /**
+     * @param punctuation whether the entries that stand in for punctuation marks are in play. False
+     *   leaves only [ALWAYS], for someone who wants the engine's punctuation and this keyboard's
+     *   word substitutions at the same time.
+     */
+    private fun markAt(tokens: List<String>, from: Int, punctuation: Boolean): Match? {
+        for (mark in if (punctuation) ALWAYS + MARKS else ALWAYS) {
+            // Only an always-on entry tolerates punctuation stuck to it. The engine writes none at
+            // all when the punctuation entries are the ones in use, so allowing it there would only
+            // let "comma," match "comma" and then emit both.
+            val found = phraseAt(tokens, from, mark.words, allowTrailing = mark.alwaysOn) ?: continue
+            return Match(mark, found.tokens, found.trailing)
         }
         return null
     }

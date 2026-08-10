@@ -13,7 +13,9 @@ import kotlin.test.assertTrue
  */
 class SpokenPunctuationTest {
 
-    private fun apply(text: String) = SpokenPunctuation.apply(text)
+    private fun apply(text: String) = SpokenPunctuation.apply(text, punctuation = true)
+    /** what someone who lets the engine punctuate gets */
+    private fun auto(text: String) = SpokenPunctuation.apply(text, punctuation = false)
 
     // --- the marks ----------------------------------------------------------------------------
 
@@ -210,6 +212,41 @@ class SpokenPunctuationTest {
                 "in order to add a literal word new line after this sentence colon new line and then continue"
         assertEquals("In this prose I am saying the phrase \"new line\" " +
                 "in order to add a new line after this sentence:\nand then continue", apply(spoken))
+    }
+
+    // --- what survives with automatic punctuation on ------------------------------------------
+
+    @Test fun aWordSubstitutionSurvivesAutomaticPunctuation() {
+        // it stands in for a word, so it neither competes with the engine's punctuation nor needs
+        // its absence — someone letting the engine punctuate still wants it
+        assertEquals("awesome :-)", auto("awesome smiley face"))
+        assertEquals("awesome :-)", auto("awesome Smiley-Face"))
+    }
+
+    @Test fun theEngineStickingPunctuationToThePhraseDoesNotHideIt() {
+        // with formatting on the engine writes "Awesome smiley face!" -- the "!" is glued to the
+        // token, and matching on the bare word missed it entirely. The mark is kept, not dropped.
+        assertEquals("Awesome :-)!", auto("Awesome smiley face!"))
+        assertEquals("well :-), then", auto("well smiley face, then"))
+    }
+
+    @Test fun marksAreSilentWithAutomaticPunctuation() {
+        // the engine is placing these; the user is not
+        assertEquals("say comma here", auto("say comma here"))
+        assertEquals("new line here", auto("new line here"))
+        // outdent stays a word here; the key event it would otherwise fire is gated by the caller,
+        // which only asks for outdents when the punctuation entries are in play
+        assertEquals("say outdent here", auto("say outdent here"))
+    }
+
+    @Test fun theEscapeStillWorksWithAutomaticPunctuation() {
+        assertEquals("the words smiley face here", auto("the words literal word smiley face here"))
+    }
+
+    @Test fun punctuationEntriesDoNotSwallowTheEnginesOwnMarks() {
+        // "comma," must not match "comma" and then emit both. Only always-on entries tolerate a
+        // trailing mark, and the engine writes none when these entries are the ones in use.
+        assertEquals(", ,", apply("comma ,"))
     }
 
     // --- capitalisation -----------------------------------------------------------------------

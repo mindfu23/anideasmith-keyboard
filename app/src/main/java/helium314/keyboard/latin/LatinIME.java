@@ -1736,7 +1736,17 @@ public class LatinIME extends InputMethodService implements
     private static final int SENTENCE_LOOKBACK = 8;
 
     /**
-     * Apply the marks the user spoke, and take back the capitals nobody asked for.
+     * Substitute the phrases the user spoke, and — only when they are the one punctuating — take
+     * back the capitals nobody asked for.
+     *
+     * Two halves, deliberately separated. Word substitutions like "smiley face" run whatever the
+     * punctuation setting is: they stand in for a word rather than a mark, so they neither compete
+     * with the engine's punctuation nor depend on its absence, and someone happy to let the engine
+     * punctuate still wants them. Everything that stands in for a mark is switched with the mode.
+     *
+     * Capitalisation is firmly on the mode's side. Undoing the engine's capitals only makes sense
+     * when the user is placing the sentence ends themselves; with automatic punctuation on, the
+     * engine's capitals are the ones it means to go with its own full stops.
      *
      * Runs before anything else touches the text, so everything downstream — the diff, the freeze,
      * the tracker — sees only the transformed version and never learns this happened. That matters
@@ -1751,13 +1761,14 @@ public class LatinIME extends InputMethodService implements
     @NonNull
     private String spokenPunctuation(@NonNull final String rawText,
             @NonNull final RichInputConnection connection) {
-        if (!mSettings.getCurrent().mVoiceInputSpokenPunctuation) return rawText;
+        final boolean spoken = mSettings.getCurrent().mVoiceInputSpokenPunctuation;
+        final String substituted = SpokenPunctuation.INSTANCE.apply(rawText, spoken);
+        if (!spoken) return substituted;
         if (mVoiceStreamed.length() == 0 && mVoiceFrozen.length() == 0) {
             mVoiceAfterSentenceEnd = SpokenPunctuation.INSTANCE.endsSentence(
                     connection.getTextBeforeCursor(SENTENCE_LOOKBACK, 0));
         }
-        return SpokenPunctuation.INSTANCE.capitalise(
-                SpokenPunctuation.INSTANCE.apply(rawText), mVoiceAfterSentenceEnd);
+        return SpokenPunctuation.INSTANCE.capitalise(substituted, mVoiceAfterSentenceEnd);
     }
 
     /**
@@ -1851,7 +1862,8 @@ public class LatinIME extends InputMethodService implements
         // Unindenting is a key event, not a character, so it cannot be streamed into place with the
         // words and happens here instead -- once, for a finalised utterance. Partials repeat the
         // whole utterance, so acting on those would walk the text left across the screen.
-        outdent(SpokenPunctuation.INSTANCE.outdents(rawText));
+        if (mSettings.getCurrent().mVoiceInputSpokenPunctuation)
+            outdent(SpokenPunctuation.INSTANCE.outdents(rawText));
         // The next utterance is a fresh string from the engine, so nothing of this one is still in
         // front of it to subtract. The overshoot belongs to that utterance and is already correct.
         mVoiceFrozen.setLength(0);

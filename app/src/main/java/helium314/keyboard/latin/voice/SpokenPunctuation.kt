@@ -42,11 +42,44 @@ internal object SpokenPunctuation {
         opening("\"", "open", "quotes"),
         opening("\"", "open", "quote"),
         closing(".", "full", "stop"),
+        // A line break and an indent are characters like any other here, so they land where they
+        // were spoken and the ordinary streaming puts them there. What they are not is harmless:
+        // the app answers a newline with a bullet and an indent of its own, behind text this class
+        // is still tracking, so LatinIME freezes the run after writing one exactly as it does for a
+        // pressed key. Nothing follows them on the same line, hence no trailing space.
+        Mark(listOf("new", "line"), "\n", spaceBefore = false, spaceAfter = false),
+        Mark(listOf("newline"), "\n", spaceBefore = false, spaceAfter = false),
+        Mark(listOf("indent"), "\t", spaceBefore = false, spaceAfter = false),
+        // Outdent has no character to be. It is dropped from the text here and carried out as a
+        // shift-Tab by the caller, which is the only way to ask an editor to unindent.
+        Mark(listOf("outdent"), "", spaceBefore = false, spaceAfter = false),
         closing(",", "comma"),
         closing(".", "period"),
         closing(";", "semicolon"),
         closing(":", "colon")
     ).sortedByDescending { it.words.size }
+
+    /** Characters this can put in the text that the app will answer with edits of its own. */
+    const val STRUCTURAL = "\n\t"
+
+    private val OUTDENT = listOf("outdent")
+
+    /**
+     * How many times the text asks to unindent.
+     *
+     * Counted rather than mapped because the mark it produces is nothing at all: a shift-Tab has to
+     * be sent as a key event, which is an action and not a character, so it cannot be streamed into
+     * place with the words. Only ever acted on for a finalised utterance — partials repeat the whole
+     * utterance every time, and an action repeated once per partial would walk the text left across
+     * the screen.
+     */
+    fun outdents(text: String): Int {
+        if (text.isBlank()) return 0
+        val tokens = text.trim().split(WHITESPACE)
+        return tokens.indices.count { i ->
+            tokens[i].equals(OUTDENT[0], ignoreCase = true) && markAt(tokens, i)?.words == OUTDENT
+        }
+    }
 
     private val WHITESPACE = Regex("\\s+")
 

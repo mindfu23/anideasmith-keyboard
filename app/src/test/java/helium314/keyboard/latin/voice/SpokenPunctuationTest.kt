@@ -52,7 +52,8 @@ class SpokenPunctuationTest {
         assertEquals(",", apply("Comma"))
         assertEquals(",", apply(" Comma"))
         assertEquals(".", apply(" Period"))
-        assertEquals(". New line", apply(" Period New line"))
+        // captured verbatim from a session, when "new line" was still arriving as two words
+        assertEquals(".\n", apply(" Period New line"))
     }
 
     @Test fun anOpeningQuoteOnItsOwnKeepsTheSpace() {
@@ -81,6 +82,49 @@ class SpokenPunctuationTest {
         // simply disagrees and the tail is rewritten, the same as any other revision
         assertEquals("I said.", apply("I said period"))
         assertEquals("I said periodically", apply("I said periodically"))
+    }
+
+    // --- the structural ones --------------------------------------------------------------------
+
+    @Test fun aSpokenLineBreakIsALineBreak() {
+        assertEquals("done.\nnext", apply("done period new line next"))
+        assertEquals("done.\nnext", apply("done period newline next"))
+    }
+
+    @Test fun nothingIsSpacedAcrossALineBreak() {
+        // a leading space on the new line would indent it by one character for no reason
+        assertEquals("\nhere", apply("new line here"))
+        assertEquals("\t", apply(" indent"))
+    }
+
+    @Test fun anIndentIsATab() {
+        assertEquals("\tbullet one", apply("indent bullet one"))
+    }
+
+    @Test fun outdentLeavesNothingBehindInTheText() {
+        // it goes out as a key event instead, so it must not also appear as a word or a space
+        assertEquals("done", apply("done outdent"))
+        assertEquals("", apply("outdent"))
+    }
+
+    @Test fun outdentsAreCounted() {
+        assertEquals(0, SpokenPunctuation.outdents("nothing here"))
+        assertEquals(1, SpokenPunctuation.outdents("done outdent"))
+        assertEquals(2, SpokenPunctuation.outdents("outdent and then outdent"))
+        assertEquals(1, SpokenPunctuation.outdents(" Outdent"))
+    }
+
+    @Test fun countingOutdentsIsSafeOnEmptyText() {
+        assertEquals(0, SpokenPunctuation.outdents(""))
+        assertEquals(0, SpokenPunctuation.outdents("   "))
+    }
+
+    @Test fun structuralCharactersAreTheOnesTheAppWillReactTo() {
+        // LatinIME freezes the dictated run after writing one of these, so the set has to match
+        // exactly what apply can emit
+        assertTrue(SpokenPunctuation.STRUCTURAL.contains('\n'))
+        assertTrue(SpokenPunctuation.STRUCTURAL.contains('\t'))
+        assertFalse(SpokenPunctuation.STRUCTURAL.contains(','))
     }
 
     // --- capitalisation -----------------------------------------------------------------------

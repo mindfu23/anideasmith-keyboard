@@ -1716,6 +1716,22 @@ public class LatinIME extends InputMethodService implements
         return stale.contentEquals(tail) ? stale.length() : -1;
     }
 
+    private boolean containsStructural(@NonNull final String text) {
+        for (int i = 0; i < text.length(); i++) {
+            if (SpokenPunctuation.STRUCTURAL.indexOf(text.charAt(i)) >= 0) return true;
+        }
+        return false;
+    }
+
+    /** Send [times] shift-Tab, then stop correcting what they moved. */
+    private void outdent(final int times) {
+        if (times <= 0) return;
+        for (int i = 0; i < times; i++) {
+            mInputLogic.sendDownUpKeyEventWithMetaState(KeyEvent.KEYCODE_TAB, KeyEvent.META_SHIFT_ON);
+        }
+        freezeVoiceText();
+    }
+
     /** Enough of the document to see past any trailing space to the character that matters. */
     private static final int SENTENCE_LOOKBACK = 8;
 
@@ -1812,6 +1828,12 @@ public class LatinIME extends InputMethodService implements
             if (!addition.isEmpty()) connection.commitText(addition, 1);
             connection.endBatchEdit();
         }
+        // A spoken line break or indent is answered by the app with a bullet and an indent of its
+        // own, put behind text this is still tracking -- the same thing a pressed Return does, and
+        // it gets the same answer. Without this the run has a hole in it and every correction after
+        // it is refused, which is what a whole line reading "There.. There's a further. indent. tab."
+        // was made of.
+        if (containsStructural(addition)) freezeVoiceText();
 
         if (!finalised) {
             mVoiceStreamed.setLength(0);
@@ -1826,6 +1848,10 @@ public class LatinIME extends InputMethodService implements
                 ? onScreen.substring(text.length()) : "";
         mVoiceStreamed.setLength(0);
         mVoiceStreamed.append(overshoot);
+        // Unindenting is a key event, not a character, so it cannot be streamed into place with the
+        // words and happens here instead -- once, for a finalised utterance. Partials repeat the
+        // whole utterance, so acting on those would walk the text left across the screen.
+        outdent(SpokenPunctuation.INSTANCE.outdents(rawText));
         // The next utterance is a fresh string from the engine, so nothing of this one is still in
         // front of it to subtract. The overshoot belongs to that utterance and is already correct.
         mVoiceFrozen.setLength(0);

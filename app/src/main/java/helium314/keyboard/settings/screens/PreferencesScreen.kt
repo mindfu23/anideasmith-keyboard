@@ -58,7 +58,6 @@ fun PreferencesScreen(
         Log.v("irrelevant", "stupid way to trigger recomposition on preference change")
     val clipboardHistoryEnabled = prefs.getBoolean(Settings.PREF_ENABLE_CLIPBOARD_HISTORY, Defaults.PREF_ENABLE_CLIPBOARD_HISTORY)
     val inlineVoiceInput = prefs.getBoolean(Settings.PREF_USE_INLINE_VOICE_INPUT, Defaults.PREF_USE_INLINE_VOICE_INPUT)
-    val spokenPunctuation = prefs.getBoolean(Settings.PREF_VOICE_INPUT_SPOKEN_PUNCTUATION, Defaults.PREF_VOICE_INPUT_SPOKEN_PUNCTUATION)
     val items = listOf(
         R.string.settings_category_input,
         Settings.PREF_SHOW_HINTS,
@@ -103,9 +102,8 @@ fun PreferencesScreen(
         Settings.PREF_USE_INLINE_VOICE_INPUT,
         // the rest only mean anything once dictation keeps the keyboard up
         if (inlineVoiceInput) Settings.PREF_VOICE_INPUT_KEEP_TYPING else null,
+        if (inlineVoiceInput) Settings.PREF_VOICE_INPUT_AUTO_PUNCTUATION else null,
         if (inlineVoiceInput) Settings.PREF_VOICE_INPUT_SPOKEN_PUNCTUATION else null,
-        // the two are the same decision made opposite ways, so only one of them is a live choice
-        if (inlineVoiceInput && !spokenPunctuation) Settings.PREF_VOICE_INPUT_AUTO_PUNCTUATION else null,
         if (inlineVoiceInput && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
             Settings.PREF_VOICE_INPUT_PREFER_OFFLINE else null,
         if (inlineVoiceInput) Settings.PREF_VOICE_INPUT_SERVICE else null,
@@ -266,13 +264,23 @@ fun createPreferencesSettings(context: Context) = listOf(
     ) {
         SwitchPreference(it, Defaults.PREF_VOICE_INPUT_KEEP_TYPING)
     },
-    Setting(context, Settings.PREF_VOICE_INPUT_SPOKEN_PUNCTUATION,
-        R.string.voice_input_spoken_punctuation, R.string.voice_input_spoken_punctuation_summary
-    ) { SwitchPreference(it, Defaults.PREF_VOICE_INPUT_SPOKEN_PUNCTUATION) },
+    // The two are opposite answers to the same question, so turning one on turns the other off.
+    // Both off is a third answer -- no punctuation from anywhere -- and stays reachable.
     Setting(context, Settings.PREF_VOICE_INPUT_AUTO_PUNCTUATION,
         R.string.voice_input_auto_punctuation, R.string.voice_input_auto_punctuation_summary
-    ) {
-        SwitchPreference(it, Defaults.PREF_VOICE_INPUT_AUTO_PUNCTUATION)
+    ) { setting ->
+        val ctx = LocalContext.current
+        SwitchPreference(setting, Defaults.PREF_VOICE_INPUT_AUTO_PUNCTUATION) { on ->
+            if (on) ctx.prefs().edit { putBoolean(Settings.PREF_VOICE_INPUT_SPOKEN_PUNCTUATION, false) }
+        }
+    },
+    Setting(context, Settings.PREF_VOICE_INPUT_SPOKEN_PUNCTUATION,
+        R.string.voice_input_spoken_punctuation, R.string.voice_input_spoken_punctuation_summary
+    ) { setting ->
+        val ctx = LocalContext.current
+        SwitchPreference(setting, Defaults.PREF_VOICE_INPUT_SPOKEN_PUNCTUATION) { on ->
+            if (on) ctx.prefs().edit { putBoolean(Settings.PREF_VOICE_INPUT_AUTO_PUNCTUATION, false) }
+        }
     },
     Setting(context, Settings.PREF_VOICE_INPUT_PREFER_OFFLINE,
         R.string.voice_input_prefer_offline, R.string.voice_input_prefer_offline_summary

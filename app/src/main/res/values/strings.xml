@@ -1018,7 +1018,7 @@ New dictionary:
     <!-- Switch for punctuation typed only where the user speaks its name -->
     <string name="voice_input_spoken_punctuation">Spoken punctuation only</string>
     <!-- Description for "voice_input_spoken_punctuation" option. -->
-    <string name="voice_input_spoken_punctuation_summary">Punctuate by saying \"comma\", \"period\", \"question mark\", \"exclamation point\", \"open quotes\", \"close quotes\". Nothing is added or capitalised on your behalf. Replaces automatic punctuation</string>
+    <string name="voice_input_spoken_punctuation_summary">Punctuate by saying \"comma\", \"period\", \"question mark\", \"exclamation point\", \"open quotes\", \"close quotes\", \"new line\", \"indent\", \"outdent\". Nothing is added or capitalised on your behalf. Turns off automatic punctuation</string>
     <!-- Switch to prefer speech recognition that runs on the device -->
     <string name="voice_input_prefer_offline">Prefer on-device recognition</string>
     <!-- Description for "voice_input_prefer_offline" option. -->

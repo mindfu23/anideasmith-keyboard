@@ -162,6 +162,10 @@ public class LatinIME extends InputMethodService implements
     // whether what precedes the current utterance finishes a sentence, and so whether the utterance
     // may begin one. Read from the document once per utterance, while our own run is still empty.
     private boolean mVoiceAfterSentenceEnd = true;
+    // whether the engine has already been reported as having rewritten text behind the freeze line.
+    // The condition holds for every payload that follows, so reporting each one counts payloads
+    // rather than freezes: five edits in one session read as forty-eight faults.
+    private boolean mVoiceDivergenceLogged = false;
     // whether the dictation state is currently being shown: the highlighted voice key and the
     // space bar label. Not a view — see showDictationUi for the row that used to live here.
     private boolean mVoiceInputUiShown = false;
@@ -1594,6 +1598,7 @@ public class LatinIME extends InputMethodService implements
         if (mVoiceStreamed.length() == 0) return;
         mVoiceFrozen.append(mVoiceStreamed);
         mVoiceStreamed.setLength(0);
+        mVoiceDivergenceLogged = false;
     }
 
     /**
@@ -1644,9 +1649,14 @@ public class LatinIME extends InputMethodService implements
                 ? fullText.indexOf(mVoiceFrozen.toString()) : -1;
         if (shifted >= 0 && shifted <= LEADING_SHIFT_SLACK) return shifted + mVoiceFrozen.length();
         final int agreed = VoiceSessionPolicy.INSTANCE.agreedPrefixLength(mVoiceFrozen.toString(), fullText);
-        if (DebugFlags.DEBUG_ENABLED) {
+        // Once per freeze, not once per payload: the engine keeps resending the same utterance, so
+        // a single edit would otherwise report itself twenty times over and a clean session would
+        // read as a broken one.
+        if (DebugFlags.DEBUG_ENABLED && !mVoiceDivergenceLogged) {
+            mVoiceDivergenceLogged = true;
             Log.w(TAG, "engine revised behind the freeze: agreed=" + agreed
                     + " of " + mVoiceFrozen.length() + (agreed == 0 ? ", writing it as new text" : ", split may cut a word")
+                    + " (this freeze, once only)"
                     + dictationText("frozen", mVoiceFrozen.toString()));
         }
         return agreed == 0 ? 0 : frozen;

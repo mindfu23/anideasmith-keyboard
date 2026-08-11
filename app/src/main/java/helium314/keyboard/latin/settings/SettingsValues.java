@@ -129,6 +129,8 @@ public class SettingsValues {
     public final boolean mVoiceInputAutoPunctuation;
     // punctuation only where the user said its name, and no capitals except after one
     public final boolean mVoiceInputSpokenPunctuation;
+    // capitals only after punctuation or from the dictionary, whoever is placing the punctuation
+    public final boolean mVoiceInputSentenceCaps;
     public final boolean mVoiceInputPreferOffline;
     /** Whether the log may record dictated text. Off unless the user turns it on to report a bug. */
     public final boolean mVoiceInputLogText;
@@ -231,6 +233,7 @@ public class SettingsValues {
         mUseInlineVoiceInput = prefs.getBoolean(Settings.PREF_USE_INLINE_VOICE_INPUT, Defaults.PREF_USE_INLINE_VOICE_INPUT);
         mVoiceInputAutoPunctuation = prefs.getBoolean(Settings.PREF_VOICE_INPUT_AUTO_PUNCTUATION, Defaults.PREF_VOICE_INPUT_AUTO_PUNCTUATION);
         mVoiceInputSpokenPunctuation = prefs.getBoolean(Settings.PREF_VOICE_INPUT_SPOKEN_PUNCTUATION, Defaults.PREF_VOICE_INPUT_SPOKEN_PUNCTUATION);
+        mVoiceInputSentenceCaps = prefs.getBoolean(Settings.PREF_VOICE_INPUT_SENTENCE_CAPS, Defaults.PREF_VOICE_INPUT_SENTENCE_CAPS);
         mVoiceInputPreferOffline = prefs.getBoolean(Settings.PREF_VOICE_INPUT_PREFER_OFFLINE, Defaults.PREF_VOICE_INPUT_PREFER_OFFLINE);
         mVoiceInputService = prefs.getString(Settings.PREF_VOICE_INPUT_SERVICE, Defaults.PREF_VOICE_INPUT_SERVICE);
         mVoiceInputKeepTyping = prefs.getBoolean(Settings.PREF_VOICE_INPUT_KEEP_TYPING, Defaults.PREF_VOICE_INPUT_KEEP_TYPING);

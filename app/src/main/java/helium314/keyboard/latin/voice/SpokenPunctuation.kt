@@ -159,18 +159,19 @@ internal object SpokenPunctuation {
     private const val SENTENCE_ENDS = ".?!"
 
     /**
-     * The same, plus a line break. Starting a new line starts a sentence whether or not the last one
-     * was finished off with a mark — a heading, a list item or a line broken mid-thought all read as
-     * beginnings, and none of them carries a full stop.
+     * The same, plus a line break and an indent. Starting a new line starts a sentence whether or
+     * not the last one was finished off with a mark — a heading, a list item or a line broken
+     * mid-thought all read as beginnings, and none of them carries a full stop. An indent starts a
+     * list item, which is the same thing one level in.
      */
-    private const val SENTENCE_STARTS_AFTER = "$SENTENCE_ENDS\n"
+    private const val SENTENCE_STARTS_AFTER = "$SENTENCE_ENDS\n\t"
 
     fun endsSentence(text: CharSequence?): Boolean {
         if (text == null) return true // nothing before it is the start of something
         for (i in text.length - 1 downTo 0) {
             val c = text[i]
-            // checked before the whitespace skip, which would otherwise step straight over it
-            if (c == '\n') return true
+            // checked before the whitespace skip, which would otherwise step straight over them
+            if (c == '\n' || c == '\t') return true
             if (c.isWhitespace()) continue
             return SENTENCE_ENDS.indexOf(c) >= 0
         }
@@ -298,24 +299,52 @@ internal object SpokenPunctuation {
      * rule can do. Selecting the word offers it in the other case instead.
      *
      * @param afterSentenceEnd what precedes this text finishes a sentence, so it may begin one.
+     * @param ordinaryWord asks whether a lower-cased word is one the dictionaries know. Supplied
+     *   only when the user has asked for capitals to come from punctuation and nothing else, and it
+     *   is what makes that safe: a capitalised word whose lower-case form is a known word was
+     *   capitalised by the engine's ear rather than by meaning, and is lowered. A word the
+     *   dictionaries do not know is left exactly as it came — an unrecognised name keeps its
+     *   capital, which is the failure worth having.
      */
-    fun capitalise(text: String, afterSentenceEnd: Boolean): String {
+    fun capitalise(text: String, afterSentenceEnd: Boolean, ordinaryWord: ((String) -> Boolean)? = null): String {
         val out = StringBuilder(text)
         var startsSentence = afterSentenceEnd
         var seenFirstLetter = false
-        for (i in out.indices) {
+        var i = 0
+        while (i < out.length) {
             val c = out[i]
-            if (c.isLetter()) {
-                if (!seenFirstLetter || startsSentence) {
-                    out[i] = if (startsSentence) c.uppercaseChar() else c.lowercaseChar()
+            if (!c.isLetter()) {
+                if (SENTENCE_STARTS_AFTER.indexOf(c) >= 0) {
+                    startsSentence = true
+                    seenFirstLetter = true
                 }
-                seenFirstLetter = true
-                startsSentence = false
-            } else if (SENTENCE_STARTS_AFTER.indexOf(c) >= 0) {
-                startsSentence = true
-                seenFirstLetter = true
+                i++
+                continue
             }
+            var end = i
+            while (end < out.length && (out[end].isLetter() || out[end] == '\'' || out[end] == '\u2019')) end++
+            if (!seenFirstLetter || startsSentence) {
+                out[i] = if (startsSentence) c.uppercaseChar() else c.lowercaseChar()
+            } else if (ordinaryWord != null && c.isUpperCase()) {
+                val word = out.substring(i, end)
+                if (!alwaysCapitalised(word) && ordinaryWord(word.lowercase())) out[i] = c.lowercaseChar()
+            }
+            seenFirstLetter = true
+            startsSentence = false
+            i = end
         }
         return out.toString()
+    }
+
+    /**
+     * Words that carry a capital wherever they stand, and would otherwise be destroyed by the rule
+     * above: "i" is a perfectly good dictionary word, so asking the dictionary about "I" gets the
+     * wrong answer with total confidence.
+     *
+     * English-only, and the place to generalise if this is ever wanted in another language.
+     */
+    private fun alwaysCapitalised(word: String): Boolean {
+        val lower = word.lowercase()
+        return lower == "i" || lower.startsWith("i'") || lower.startsWith("i\u2019")
     }
 }

@@ -135,6 +135,7 @@ object Defaults {
     const val PREF_USE_INLINE_VOICE_INPUT = false
     const val PREF_VOICE_INPUT_AUTO_PUNCTUATION = true
     const val PREF_VOICE_INPUT_SPOKEN_PUNCTUATION = false
+    const val PREF_VOICE_INPUT_SENTENCE_CAPS = false
     const val PREF_VOICE_INPUT_PREFER_OFFLINE = true
     const val PREF_VOICE_INPUT_SERVICE = ""
     const val PREF_VOICE_INPUT_KEEP_TYPING = false

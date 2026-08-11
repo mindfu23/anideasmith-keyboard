@@ -276,6 +276,63 @@ class SpokenPunctuationTest {
         assertEquals("", SpokenPunctuation.capitalise("", true))
     }
 
+    // --- capitals from punctuation and the dictionary only ---------------------------------------
+    // The recogniser capitalises on pauses and pitch, which for some speakers lands mid-sentence
+    // several times a paragraph. Fixture is real, dictated 2026-08-11 06:27 with the engine
+    // punctuating: "the twinge in my Grain muscle attachment Yesterday", "this same sort of Hurt",
+    // "I think The year before", "Don't wanna Work out".
+
+    /** stands in for the dictionaries: everything here is an ordinary word */
+    private val known = setOf("grain", "yesterday", "hurt", "the", "at", "work", "priceless", "i", "mark", "rose")
+    /** mid-paragraph by default, which is where the unwanted capitals turn up */
+    private fun caps(text: String, after: Boolean = false) =
+        SpokenPunctuation.capitalise(text, after) { it in known }
+
+    @Test fun aCapitalOnAnOrdinaryWordMidSentenceComesOff() {
+        assertEquals("the twinge in my grain muscle attachment yesterday",
+            caps("the twinge in my Grain muscle attachment Yesterday"))
+        assertEquals("this same sort of hurt", caps("this same sort of Hurt"))
+        assertEquals("don't wanna work out", caps("Don't wanna Work out"))
+    }
+
+    @Test fun aWordTheDictionariesDoNotKnowKeepsItsCapital() {
+        // an unrecognised name is the failure worth having: leave it exactly as it came
+        assertEquals("we went to Nymeria and Ravensholm", caps("we went to Nymeria and Ravensholm"))
+    }
+
+    @Test fun punctuationStillCapitalises() {
+        assertEquals("Done. The next one", caps("done. the next one", after = true))
+        // a line break and an indent each begin something, so each starts a sentence
+        assertEquals("One\nTwo\tThree", caps("one\ntwo\tthree", after = true))
+    }
+
+    @Test fun theStartOfAnUtteranceFollowsWhatPrecededIt() {
+        assertEquals("and then it moved", caps(" And then it moved", after = false).trim())
+        assertEquals("And then it moved", caps(" and then it moved", after = true).trim())
+    }
+
+    @Test fun capitalIStaysCapital() {
+        // "i" is a perfectly good dictionary word, so asking the dictionary gets this wrong with
+        // total confidence unless it is excluded by name
+        assertEquals("what I meant", caps("what I meant"))
+        assertEquals("what I'm saying", caps("what I'm saying"))
+        assertEquals("what I\u2019ll say", caps("what I\u2019ll say"))
+    }
+
+    @Test fun aNameThatIsAlsoAWordIsLowercased() {
+        // the known cost of this rule: "priceless" is an event, "Mark" and "Rose" are people, and
+        // the dictionaries know all three as ordinary words. The personal dictionary cannot help,
+        // since they are valid either way. Documented rather than solved.
+        assertEquals("it was at priceless", caps("it was at Priceless"))
+        assertEquals("mark and rose came", caps("Mark and Rose came"))
+    }
+
+    @Test fun withoutTheDictionaryOnlySentenceStartsAreTouched() {
+        // spoken-punctuation mode passes no predicate, and must keep behaving as it did
+        assertEquals("the twinge in my Grain muscle attachment Yesterday",
+            SpokenPunctuation.capitalise("The twinge in my Grain muscle attachment Yesterday", false))
+    }
+
     // --- what counts as the end of a sentence --------------------------------------------------
 
     @Test fun onlySentenceMarksEndASentence() {

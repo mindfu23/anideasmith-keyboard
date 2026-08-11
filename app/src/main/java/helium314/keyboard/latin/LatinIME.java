@@ -1771,14 +1771,33 @@ public class LatinIME extends InputMethodService implements
     @NonNull
     private String spokenPunctuation(@NonNull final String rawText,
             @NonNull final RichInputConnection connection) {
-        final boolean spoken = mSettings.getCurrent().mVoiceInputSpokenPunctuation;
+        final SettingsValues settingsValues = mSettings.getCurrent();
+        final boolean spoken = settingsValues.mVoiceInputSpokenPunctuation;
+        final boolean sentenceCaps = settingsValues.mVoiceInputSentenceCaps;
         final String substituted = SpokenPunctuation.INSTANCE.apply(rawText, spoken);
-        if (!spoken) return substituted;
+        if (!spoken && !sentenceCaps) return substituted;
         if (mVoiceStreamed.length() == 0 && mVoiceFrozen.length() == 0) {
             mVoiceAfterSentenceEnd = SpokenPunctuation.INSTANCE.endsSentence(
                     connection.getTextBeforeCursor(SENTENCE_LOOKBACK, 0));
         }
-        return SpokenPunctuation.INSTANCE.capitalise(substituted, mVoiceAfterSentenceEnd);
+        // The dictionary is only consulted when the user has asked for capitals to come from
+        // punctuation and nothing else. Without it the pass still fixes the start of an utterance,
+        // which is all spoken punctuation ever needed.
+        return SpokenPunctuation.INSTANCE.capitalise(substituted, mVoiceAfterSentenceEnd,
+                sentenceCaps ? this::isOrdinaryWord : null);
+    }
+
+    /**
+     * Whether the dictionaries know [word] as an ordinary lower-case word, and so whether a capital
+     * on it came from the engine's ear rather than from meaning.
+     *
+     * Checks every loaded dictionary of every type — the main one, contacts, user history and the
+     * personal dictionary — so a name added there is already covered, and so will a dictation
+     * vocabulary be. Read-cached by the facilitator, which matters because this runs per capitalised
+     * word on the streaming path.
+     */
+    private boolean isOrdinaryWord(@NonNull final String word) {
+        return mDictionaryFacilitator.isValidSpellingWord(word);
     }
 
     /**

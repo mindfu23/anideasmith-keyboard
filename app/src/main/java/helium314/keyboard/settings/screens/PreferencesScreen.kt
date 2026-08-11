@@ -104,6 +104,7 @@ fun PreferencesScreen(
         if (inlineVoiceInput) Settings.PREF_VOICE_INPUT_KEEP_TYPING else null,
         if (inlineVoiceInput) Settings.PREF_VOICE_INPUT_AUTO_PUNCTUATION else null,
         if (inlineVoiceInput) Settings.PREF_VOICE_INPUT_SPOKEN_PUNCTUATION else null,
+        if (inlineVoiceInput) Settings.PREF_VOICE_INPUT_SENTENCE_CAPS else null,
         if (inlineVoiceInput && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
             Settings.PREF_VOICE_INPUT_PREFER_OFFLINE else null,
         if (inlineVoiceInput) Settings.PREF_VOICE_INPUT_SERVICE else null,
@@ -282,6 +283,9 @@ fun createPreferencesSettings(context: Context) = listOf(
             if (on) ctx.prefs().edit { putBoolean(Settings.PREF_VOICE_INPUT_AUTO_PUNCTUATION, false) }
         }
     },
+    Setting(context, Settings.PREF_VOICE_INPUT_SENTENCE_CAPS,
+        R.string.voice_input_sentence_caps, R.string.voice_input_sentence_caps_summary
+    ) { SwitchPreference(it, Defaults.PREF_VOICE_INPUT_SENTENCE_CAPS) },
     Setting(context, Settings.PREF_VOICE_INPUT_PREFER_OFFLINE,
         R.string.voice_input_prefer_offline, R.string.voice_input_prefer_offline_summary
     ) {

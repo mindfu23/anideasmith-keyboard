@@ -1015,6 +1015,10 @@ New dictionary:
     <string name="voice_input_auto_punctuation">Automatic punctuation</string>
     <!-- Description for "voice_input_auto_punctuation" option. -->
     <string name="voice_input_auto_punctuation_summary">Let the speech recognition service add punctuation and capitalisation</string>
+    <!-- Switch for capitals coming only from punctuation and the dictionaries -->
+    <string name="voice_input_sentence_caps">Capitalise only after punctuation</string>
+    <!-- Description for "voice_input_sentence_caps" option. -->
+    <string name="voice_input_sentence_caps_summary">Undo capitals the speech recogniser adds at pauses. A word keeps its capital after a full stop, question mark, exclamation mark, new line or indent, and when the dictionaries know it only as a name</string>
     <!-- Switch for punctuation typed only where the user speaks its name -->
     <string name="voice_input_spoken_punctuation">Spoken punctuation only</string>
     <!-- Description for "voice_input_spoken_punctuation" option. -->

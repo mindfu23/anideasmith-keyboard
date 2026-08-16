@@ -1608,36 +1608,32 @@ public class LatinIME extends InputMethodService implements
      * Normally the frozen text is a prefix of what the engine is still sending, since it is the
      * beginning of the same utterance, and splitting on its length is exact.
      *
-     * When it is not a prefix the engine has rewritten something behind the user's edit. That text
-     * cannot be corrected -- it is on the far side of what the user typed -- so whatever is written
-     * next has to pay one of three costs: cut a word, drop a word, or drop a clause. Splitting on
-     * the length cuts. Measured 2026-08-09: the freeze fell inside "Miller's" while the engine still
-     * had it as "Mill.", and the split wrote the remainder as a word that was never spoken:
+     * When it is not a prefix, resume where the agreement stops rather than at the frozen length.
      *
-     *   frozen=199 [... that Max Mill.]   engine gives [... that Max Miller's, his nephew.]
-     *   split at 199                   -> writes "r's, his nephew."
+     * Splitting on the length was the choice until 2026-08-16, on the understanding that its cost
+     * was cutting a word. That was wrong, and the log says so plainly. The engine ends a partial
+     * with a provisional "." and replaces it with a space when it carries on, so agreement stops
+     * exactly one character short -- and splitting on the length steps over the space:
      *
-     * Seven of twelve freezes in that session also lost the leading space every other segment
-     * carries, for the same reason.
+     *   frozen=[ This seems to be working.]   agreed=25 of 26
+     *   split at 26                        -> "working." + "now." = "working.now."
      *
-     * Cutting is the chosen cost (decided 2026-08-09, having seen all three): the two alternatives
-     * are resuming at the next word boundary, which drops the fragment, and re-baselining on the
-     * whole payload, which drops however much was said between the edit and the next agreement.
-     * Both lose speech silently. This one keeps every character the engine heard and puts the damage
-     * somewhere a reader can see it, next to the edit that caused it.
+     * That corruption then goes into the frozen record itself, so agreement can never recover:
      *
-     * None of that applies when the engine agrees with *none* of the frozen text. Then the length is
-     * not a slightly wrong split point, it is a meaningless one: subtracting it takes that many
-     * characters off the front of text the engine never said before. Measured 2026-08-09, all eight
-     * divergences in one session were this case, every one while the user was typing —
+     *   frozen=[ This seems to be working.now. I'm not sure.]   agreed=25 of 44
+     *   frozen=[ ... Maybe I need to store.up ...]              agreed=53 of 68
      *
-     *   onPartialResults, 3 chars   frozen=7   ->  adding=0, the whole payload dropped
-     *   onPartialResults, ...       frozen=13  ->  adding=0, twice more
+     * and it decays until nothing agrees, at which point the whole utterance is written a second
+     * time. One session gave "workingnow", "surewhat's", "storeup", "otext", "Iwas", and then
+     * "I'm not sure what's going on. i'm not sure what's going on?".
      *
-     * — because a keystroke freezes the run, so the frozen length grows with every key pressed while
-     * the engine is still revising a short utterance. So when nothing matches, nothing is subtracted:
-     * the payload is written as new text, after whatever is already there. That keeps every character
-     * the engine heard, which is the same reason the tail case cuts rather than drops.
+     * Resuming at the agreement keeps frozen[0..agreed) equal to the payload there, so the record
+     * stays aligned and nothing compounds. Its cost is the character the engine replaced showing up
+     * once -- "working. now." keeps a full stop that turned out to be a comma's worth of pause --
+     * which is one visible mark rather than a lost space and a repeated sentence.
+     *
+     * Zero agreement falls out of the same rule: resume at nothing, which is to write the payload
+     * as new text after whatever is there. That was already the behaviour and it stays.
      */
     private int frozenPrefixLength(@NonNull final String fullText) {
         final int frozen = Math.min(mVoiceFrozen.length(), fullText.length());
@@ -1654,12 +1650,12 @@ public class LatinIME extends InputMethodService implements
         // read as a broken one.
         if (DebugFlags.DEBUG_ENABLED && !mVoiceDivergenceLogged) {
             mVoiceDivergenceLogged = true;
-            Log.w(TAG, "engine revised behind the freeze: agreed=" + agreed
-                    + " of " + mVoiceFrozen.length() + (agreed == 0 ? ", writing it as new text" : ", split may cut a word")
+            Log.w(TAG, "engine revised behind the freeze: agreed=" + agreed + " of "
+                    + mVoiceFrozen.length() + ", resuming there"
                     + " (this freeze, once only)"
                     + dictationText("frozen", mVoiceFrozen.toString()));
         }
-        return agreed == 0 ? 0 : frozen;
+        return agreed;
     }
 
     /**

@@ -1608,67 +1608,36 @@ public class LatinIME extends InputMethodService implements
 
     /**
      * How much of the engine's [fullText] is behind the freeze line and must be left out of the
-     * comparison.
+     * comparison, and how much of the frozen text it accounts for.
      *
      * Normally the frozen text is a prefix of what the engine is still sending, since it is the
-     * beginning of the same utterance, and splitting on its length is exact.
+     * beginning of the same utterance, and splitting on its length is exact. Otherwise the two are
+     * lined up on their words -- see VoiceSessionPolicy.frozenCover for why marks cannot take part.
      *
-     * When it is not a prefix, resume where the agreement stops rather than at the frozen length.
-     *
-     * Splitting on the length was the choice until 2026-08-16, on the understanding that its cost
-     * was cutting a word. That was wrong, and the log says so plainly. The engine ends a partial
-     * with a provisional "." and replaces it with a space when it carries on, so agreement stops
-     * exactly one character short -- and splitting on the length steps over the space:
-     *
-     *   frozen=[ This seems to be working.]   agreed=25 of 26
-     *   split at 26                        -> "working." + "now." = "working.now."
-     *
-     * That corruption then goes into the frozen record itself, so agreement can never recover:
-     *
-     *   frozen=[ This seems to be working.now. I'm not sure.]   agreed=25 of 44
-     *   frozen=[ ... Maybe I need to store.up ...]              agreed=53 of 68
-     *
-     * and it decays until nothing agrees, at which point the whole utterance is written a second
-     * time. One session gave "workingnow", "surewhat's", "storeup", "otext", "Iwas", and then
-     * "I'm not sure what's going on. i'm not sure what's going on?".
-     *
-     * Resuming at the agreement keeps frozen[0..agreed) equal to the payload there, so the record
-     * stays aligned and nothing compounds. Its cost is the character the engine replaced showing up
-     * once -- "working. now." keeps a full stop that turned out to be a comma's worth of pause --
-     * which is one visible mark rather than a lost space and a repeated sentence.
-     *
-     * Zero agreement falls out of the same rule: resume at nothing, which is to write the payload
-     * as new text after whatever is there. That was already the behaviour and it stays.
+     * History worth keeping: until 2026-08-16 this split on the frozen length, which stepped over the
+     * space when the engine swapped a provisional "." for a comma's pause ("working.now.") and
+     * compounded until whole sentences were written twice. From then until 2026-09-29 it resumed
+     * where the characters stopped agreeing, which fixed that but rewrote everything after a mark
+     * the engine revised behind the freeze ("could be. something useful. something useful.").
      */
-    private int frozenPrefixLength(@NonNull final String fullText) {
-        final int frozen = Math.min(mVoiceFrozen.length(), fullText.length());
-        if (frozen == 0 || startsWithFrozen(fullText)) return frozen;
-        // The engine adds a leading space to a final that its partials did not have, which moves
-        // every character along by one and makes an unchanged utterance look like a different one.
-        // Finding the frozen text a character or two in says that is all that happened.
-        final int shifted = mVoiceFrozen.length() <= fullText.length()
-                ? fullText.indexOf(mVoiceFrozen.toString()) : -1;
-        if (shifted >= 0 && shifted <= LEADING_SHIFT_SLACK) return shifted + mVoiceFrozen.length();
-        final int agreed = VoiceSessionPolicy.INSTANCE.agreedPrefixLength(mVoiceFrozen.toString(), fullText);
+    @NonNull
+    private VoiceSessionPolicy.FrozenCover frozenCover(@NonNull final String fullText) {
+        final int frozen = mVoiceFrozen.length();
+        if (frozen == 0) return new VoiceSessionPolicy.FrozenCover(0, 0, true);
+        if (startsWithFrozen(fullText)) return new VoiceSessionPolicy.FrozenCover(frozen, frozen, true);
+        final VoiceSessionPolicy.FrozenCover cover =
+                VoiceSessionPolicy.INSTANCE.frozenCover(mVoiceFrozen.toString(), fullText);
         // Once per freeze, not once per payload: the engine keeps resending the same utterance, so
         // a single edit would otherwise report itself twenty times over and a clean session would
         // read as a broken one.
-        if (DebugFlags.DEBUG_ENABLED && !mVoiceDivergenceLogged) {
+        if (DebugFlags.DEBUG_ENABLED && !cover.getAgrees() && !mVoiceDivergenceLogged) {
             mVoiceDivergenceLogged = true;
-            Log.w(TAG, "engine revised behind the freeze: agreed=" + agreed + " of "
-                    + mVoiceFrozen.length() + ", resuming there"
-                    + " (this freeze, once only)"
+            Log.w(TAG, "engine revised a word behind the freeze: resuming at " + cover.getEngineCovered()
+                    + " of " + fullText.length() + " (this freeze, once only)"
                     + dictationText("frozen", mVoiceFrozen.toString()));
         }
-        return agreed;
+        return cover;
     }
-
-    /**
-     * How far into the engine's text the frozen part may have moved and still be the same text. Only
-     * wide enough for the space a final gains over its partials — far enough to find a repetition
-     * would be far enough to delete the wrong one.
-     */
-    private static final int LEADING_SHIFT_SLACK = 2;
 
     private boolean startsWithFrozen(@NonNull final String fullText) {
         if (fullText.length() < mVoiceFrozen.length()) return false;
@@ -1825,7 +1794,9 @@ public class LatinIME extends InputMethodService implements
         // Everything the user has typed behind is off limits, so only the part of the utterance
         // dictated since then takes part in this. The engine keeps resending the whole utterance,
         // which is why the frozen part has to be subtracted rather than forgotten.
-        final String text = fullText.substring(frozenPrefixLength(fullText));
+        final String frozenBefore = mVoiceFrozen.toString();
+        final VoiceSessionPolicy.FrozenCover cover = frozenCover(fullText);
+        final String text = fullText.substring(cover.getEngineCovered());
         final String onScreen = mVoiceStreamed.toString();
         int agreed = VoiceSessionPolicy.INSTANCE.agreedPrefixLength(onScreen, text);
         // Not onScreen.length() - agreed: on a final, what lies past the engine's text is the next
@@ -1895,8 +1866,17 @@ public class LatinIME extends InputMethodService implements
         if (mSettings.getCurrent().mVoiceInputSpokenPunctuation)
             outdent(SpokenPunctuation.INSTANCE.outdents(rawText));
         // The next utterance is a fresh string from the engine, so nothing of this one is still in
-        // front of it to subtract. The overshoot belongs to that utterance and is already correct.
+        // front of it to subtract -- except frozen words the partials ran into past this final's
+        // end. Those belong to the next utterance, which will send them again, so they stay as its
+        // freeze line and are not written twice.
+        final String carry = VoiceSessionPolicy.INSTANCE.frozenCarryAfterFinal(frozenBefore, cover);
         mVoiceFrozen.setLength(0);
+        mVoiceFrozen.append(carry);
+        mVoiceDivergenceLogged = false;
+        if (DebugFlags.DEBUG_ENABLED && !carry.isEmpty()) {
+            Log.i(TAG, "carrying " + carry.length() + " frozen characters into the next utterance"
+                    + dictationText("carry", carry));
+        }
         if (DebugFlags.DEBUG_ENABLED && mSettings.getCurrent().mVoiceInputLogText) {
             final CharSequence actual = connection.getTextBeforeCursor(140, 0);
             Log.i(TAG, "field now ends" + dictationText("actual", actual == null ? "<null>" : actual.toString()));

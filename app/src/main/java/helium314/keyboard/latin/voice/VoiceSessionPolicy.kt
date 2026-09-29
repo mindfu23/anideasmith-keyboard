@@ -226,6 +226,84 @@ internal object VoiceSessionPolicy {
     fun shouldRestartAfterResult(isActive: Boolean, cancelling: Boolean, restartPending: Boolean) =
         isActive && !cancelling && !restartPending
 
+    /**
+     * How the frozen text lines up with the engine's latest text.
+     *
+     * @property engineCovered how much of the engine's text is already on screen behind the freeze,
+     *   so writing resumes there
+     * @property frozenUsed how much of the frozen text the engine's text accounts for
+     * @property agrees false when a word behind the freeze was revised, which is worth a log line
+     */
+    data class FrozenCover(val engineCovered: Int, val frozenUsed: Int, val agrees: Boolean)
+
+    /**
+     * Which part of the engine's [engine] text is already on screen as [frozen] text.
+     *
+     * Compared on letters and digits only. Comparing every character let a revised mark behind the
+     * freeze break agreement, and writing resumed from the mark with the rest of the utterance —
+     * already on screen — written a second time. Measured 2026-09-29 in Obsidian, two Tabs in one
+     * utterance: the frozen text read "could be. something useful." after the engine had first ended
+     * a partial with "be.", its final said "could be something useful.", and agreement stopped at the
+     * full stop — "could be. something useful. something useful." Marks cannot be taken back once
+     * frozen, so the useful question is only whether the *words* agree.
+     *
+     * When the frozen text runs past the end of [engine], [FrozenCover.frozenUsed] says where: that
+     * remainder is words the partials streamed ahead of a segment's end, which the next segment will
+     * send again. See [frozenCarryAfterFinal].
+     *
+     * Case is ignored too, since capitalisation is decided afresh on every payload.
+     */
+    fun frozenCover(frozen: String, engine: String): FrozenCover {
+        var i = 0
+        var j = 0
+        var lastI = 0
+        var lastJ = 0
+        while (true) {
+            while (i < frozen.length && !frozen[i].isLetterOrDigit()) i++
+            while (j < engine.length && !engine[j].isLetterOrDigit()) j++
+            if (i >= frozen.length || j >= engine.length) break
+            if (frozen[i].lowercaseChar() != engine[j].lowercaseChar()) break
+            i++; j++
+            lastI = i
+            lastJ = j
+        }
+        if (i >= frozen.length) {
+            // Every frozen word is in the engine's text. The frozen text's trailing mark is on screen
+            // too, so the engine's mark in the same place is not written again -- but its space is,
+            // or the next word would be glued to the mark.
+            val frozenTail = frozen.substring(lastI)
+            var k = lastJ
+            if (frozenTail.isNotEmpty()) {
+                while (k < engine.length && !engine[k].isLetterOrDigit() && !engine[k].isWhitespace()) k++
+                if (frozenTail.last().isWhitespace())
+                    while (k < engine.length && engine[k].isWhitespace()) k++
+            }
+            return FrozenCover(k, frozen.length, true)
+        }
+        // the engine's text ends inside the frozen text: all of it is already on screen
+        if (j >= engine.length) return FrozenCover(engine.length, lastI, true)
+        // A word behind the freeze was revised. What is frozen stays, so resume at the start of the
+        // revised word, with its space: the revised tail appears once more rather than being lost,
+        // and never as the back half of a word.
+        var wordStart = lastJ
+        while (wordStart > 0 && engine[wordStart - 1].isLetterOrDigit()) wordStart--
+        if (wordStart > 0 && engine[wordStart - 1].isWhitespace()) wordStart--
+        return FrozenCover(wordStart, lastI, false)
+    }
+
+    /**
+     * What of [frozen] is still ahead of the next segment once a final has arrived, or "" if nothing.
+     *
+     * A partial can run past the end of the segment its final closes, and the words it ran into
+     * belong to the next segment, which sends them again. When a Tab froze them first, they were
+     * forgotten with the rest of the frozen text and the next segment wrote them a second time.
+     * Measured 2026-09-29: frozen "…when I do this. And then I hit tab.", final "…when I do this.",
+     * then " And then I hit tab." twice on screen. Carried over, they are what the next segment is
+     * compared against, and it writes only what is new.
+     */
+    fun frozenCarryAfterFinal(frozen: String, cover: FrozenCover): String =
+        if (cover.agrees && cover.frozenUsed < frozen.length) frozen.substring(cover.frozenUsed) else ""
+
     /** A cursor move we caused is not a reason to stop; one the user made is. */
     fun cursorMoveEndsDictation(msSinceOwnWrite: Long) = msSinceOwnWrite >= WRITE_SETTLE_MS
 

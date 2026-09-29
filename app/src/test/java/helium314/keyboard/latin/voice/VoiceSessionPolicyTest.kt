@@ -438,4 +438,60 @@ class VoiceSessionPolicyTest {
         assertFalse(VoiceSessionPolicy.leftTheField(0x0002C0A1))
         assertFalse(VoiceSessionPolicy.leftTheField(InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE))
     }
+
+    // Frozen text against the engine's, with payloads captured in Obsidian on 2026-09-29.
+
+    private fun resumed(frozen: String, engine: String) =
+        engine.substring(VoiceSessionPolicy.frozenCover(frozen, engine).engineCovered)
+
+    @Test fun aMarkRevisedBehindTheFreezeDoesNotRewriteTheWordsAfterIt() {
+        val frozen = " While I was doing long form dictation, so I don't know if that's in the list of things" +
+                " to look at, but that could be. something useful."
+        val final = " While I was doing long form dictation, so I don't know if that's in the list of things" +
+                " to look at, but that could be something useful."
+        assertEquals("", resumed(frozen, final))
+    }
+
+    @Test fun wordsAfterTheFrozenTextAreWrittenWithTheirSpace() {
+        val frozen = " While I was doing long form dictation, so I don't know if that's in the list of things" +
+                " to look at, but that could be."
+        val partial = " While I was doing long form dictation, so I don't know if that's in the list of things" +
+                " to look at, but that could be something useful."
+        assertEquals(" something useful.", resumed(frozen, partial))
+    }
+
+    @Test fun aFinalEndingInsideTheFrozenTextCarriesTheRestToTheNextSegment() {
+        val frozen = "Starting a test and seeing what happens when I do this. And then I hit tab."
+        val final = "Starting a test and seeing what happens when I do this."
+        val cover = VoiceSessionPolicy.frozenCover(frozen, final)
+        assertEquals("", final.substring(cover.engineCovered))
+        val carry = VoiceSessionPolicy.frozenCarryAfterFinal(frozen, cover)
+        // the next segment resends the words its predecessor's partials ran into
+        assertEquals("", resumed(carry, " And then I hit tab."))
+        assertEquals("", resumed(carry, " And then I"))
+        assertEquals(" Talking some more.", resumed(carry, " And then I hit tab. Talking some more."))
+    }
+
+    @Test fun aSegmentFinalThatMatchesEverythingCarriesNothing() {
+        val frozen = "Starting a test."
+        assertEquals("", VoiceSessionPolicy.frozenCarryAfterFinal(frozen, VoiceSessionPolicy.frozenCover(frozen, "Starting a test.")))
+    }
+
+    @Test fun theUsualCasesStillResumeWhereTheyDid() {
+        // plain extension
+        assertEquals(" now.", resumed(" This seems to be working.", " This seems to be working now."))
+        // a leading space the final gained over its partials
+        assertEquals("", resumed("This seems to be working.", " This seems to be working."))
+        // a comma's pause replacing the provisional full stop keeps its space (cfe3d20c's case)
+        assertEquals(" now.", resumed(" This seems to be working.", " This seems to be working, now."))
+        // capitals decided afresh
+        assertEquals(" more.", resumed(" something Useful.", " something useful more."))
+    }
+
+    @Test fun aRevisedWordBehindTheFreezeResumesAfterTheLastAgreeingWord() {
+        val cover = VoiceSessionPolicy.frozenCover(" I want to by it.", " I want to buy it.")
+        assertFalse(cover.agrees)
+        assertEquals(" buy it.", " I want to buy it.".substring(cover.engineCovered))
+        assertEquals("", VoiceSessionPolicy.frozenCarryAfterFinal(" I want to by it.", cover))
+    }
 }

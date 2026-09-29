@@ -1065,6 +1065,10 @@ New dictionary:
     <string name="voice_input_key_group_undo_redo">Undo and redo</string>
     <!-- Key group in "voice_input_short_form_ignored_keys" -->
     <string name="voice_input_key_group_punctuation">Punctuation and symbols</string>
+    <!-- Switch for the speech service's start/stop sounds during long-form dictation -->
+    <string name="voice_input_long_form_beeps">Listening beeps</string>
+    <!-- Description for "voice_input_long_form_beeps" option. -->
+    <string name="voice_input_long_form_beeps_summary">Play the speech service\'s beep each time long-form dictation starts listening again after a pause. When off, notification sounds are muted while long-form dictation runs and restored when it stops.</string>
     <!-- Section heading on the dictation screen: which recognition engine is used, and how -->
     <string name="settings_category_voice_recognition">Speech recognition</string>
     <!-- Section heading on the dictation screen: logging for diagnosing dictation problems -->

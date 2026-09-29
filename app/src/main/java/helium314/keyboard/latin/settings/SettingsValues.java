@@ -139,6 +139,7 @@ public class SettingsValues {
     public final String mVoiceInputService;
     public final boolean mVoiceInputKeepTyping;
     public final boolean mVoiceInputShortFormKeepOnTab;
+    public final boolean mVoiceInputLongFormBeeps;
     public final Set<VoiceSessionPolicy.ShortFormKeyGroup> mVoiceInputShortFormIgnoredKeys;
     public final boolean mWiderSpaceBar;
     public final float mBottomPaddingScale;
@@ -241,6 +242,7 @@ public class SettingsValues {
         mVoiceInputPreferOffline = prefs.getBoolean(Settings.PREF_VOICE_INPUT_PREFER_OFFLINE, Defaults.PREF_VOICE_INPUT_PREFER_OFFLINE);
         mVoiceInputService = prefs.getString(Settings.PREF_VOICE_INPUT_SERVICE, Defaults.PREF_VOICE_INPUT_SERVICE);
         mVoiceInputKeepTyping = prefs.getBoolean(Settings.PREF_VOICE_INPUT_KEEP_TYPING, Defaults.PREF_VOICE_INPUT_KEEP_TYPING);
+        mVoiceInputLongFormBeeps = prefs.getBoolean(Settings.PREF_VOICE_INPUT_LONG_FORM_BEEPS, Defaults.PREF_VOICE_INPUT_LONG_FORM_BEEPS);
         mVoiceInputShortFormKeepOnTab = prefs.getBoolean(Settings.PREF_VOICE_INPUT_SHORT_FORM_KEEP_ON_TAB, Defaults.PREF_VOICE_INPUT_SHORT_FORM_KEEP_ON_TAB);
         mVoiceInputShortFormIgnoredKeys = VoiceSessionPolicy.ShortFormKeyGroup.Companion.parse(
                 prefs.getString(Settings.PREF_VOICE_INPUT_SHORT_FORM_IGNORED_KEYS, Defaults.PREF_VOICE_INPUT_SHORT_FORM_IGNORED_KEYS));

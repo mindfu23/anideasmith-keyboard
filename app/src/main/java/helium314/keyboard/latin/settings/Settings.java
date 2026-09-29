@@ -150,6 +150,7 @@ public final class Settings implements SharedPreferences.OnSharedPreferenceChang
     public static final String PREF_VOICE_INPUT_PREFER_OFFLINE = "voice_input_prefer_offline";
     public static final String PREF_VOICE_INPUT_SERVICE = "voice_input_service";
     public static final String PREF_VOICE_INPUT_KEEP_TYPING = "voice_input_keep_typing";
+    public static final String PREF_VOICE_INPUT_LONG_FORM_BEEPS = "voice_input_long_form_beeps";
     public static final String PREF_VOICE_INPUT_SHORT_FORM_KEEP_ON_TAB = "voice_input_short_form_keep_on_tab";
     public static final String PREF_VOICE_INPUT_SHORT_FORM_IGNORED_KEYS = "voice_input_short_form_ignored_keys";
     public static final String PREF_WIDER_SPACE_BAR = "wider_space_bar";

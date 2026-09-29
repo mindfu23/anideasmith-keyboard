@@ -77,6 +77,7 @@ import helium314.keyboard.latin.suggestions.SuggestionStripViewAccessor;
 import helium314.keyboard.latin.touchinputconsumer.GestureConsumer;
 import helium314.keyboard.latin.voice.SpokenPunctuation;
 import helium314.keyboard.latin.voice.VoiceInputController;
+import helium314.keyboard.latin.voice.NotificationSoundMute;
 import helium314.keyboard.latin.voice.VoiceInputStrip;
 import helium314.keyboard.latin.voice.VoiceSessionPolicy;
 import helium314.keyboard.latin.utils.ColorUtilKt;
@@ -152,6 +153,7 @@ public class LatinIME extends InputMethodService implements
     // when we last wrote dictated text, so echoes of our own writes are not read as the user
     // moving the caret. SystemClock.uptimeMillis, not wall clock.
     private long mVoiceInputLastWrite = 0;
+    private NotificationSoundMute mNotificationSoundMute;
     // what this dictation session has committed, so text the engine re-sends can be recognised as a
     // repeat rather than appended. Emptied between sessions, never persisted.
     @NonNull private final StringBuilder mVoiceStreamed = new StringBuilder();
@@ -589,6 +591,9 @@ public class LatinIME extends InputMethodService implements
         // rather than every session after it. Cleared before the settings listener starts, so this
         // is the value everything else reads.
         KtxKt.prefs(this).edit().putBoolean(DebugSettings.PREF_LOG_DICTATED_TEXT, false).apply();
+        // and notification sounds a previous process muted for long form and died holding
+        mNotificationSoundMute = new NotificationSoundMute(this);
+        mNotificationSoundMute.restore();
         mSettings.startListener();
         KeyboardIconsSet.Companion.getInstance().loadIcons(this);
         mRichImm = RichInputMethodManager.getInstance();
@@ -748,6 +753,7 @@ public class LatinIME extends InputMethodService implements
             mVoiceInputController.release();
             mVoiceInputController = null;
         }
+        if (mNotificationSoundMute != null) mNotificationSoundMute.restore();
         mClipboardHistoryManager.onDestroy();
         mDictionaryFacilitator.closeDictionaries();
         mSettings.onDestroy();
@@ -1551,6 +1557,8 @@ public class LatinIME extends InputMethodService implements
         mInputLogic.finishInput();
         setNeutralSuggestionStrip();
         mVoiceInputGotResults = false;
+        // before start: the first ping is the one startListening plays
+        if (forceLongForm && !settingsValues.mVoiceInputLongFormBeeps) mNotificationSoundMute.mute();
         mVoiceInputController.start(mRichImm.getCurrentSubtypeLocale(),
                 settingsValues.mVoiceInputPreferOffline,
                 // Spoken punctuation asks the engine for raw words and does the marks itself, so it
@@ -2052,6 +2060,7 @@ public class LatinIME extends InputMethodService implements
         @Override
         public void onVoiceInputStopped() {
             Log.i(TAG, "voice input stopped");
+            mNotificationSoundMute.restore();
             hideDictationUi();
         }
     };

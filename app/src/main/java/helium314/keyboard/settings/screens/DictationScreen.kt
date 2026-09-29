@@ -70,6 +70,7 @@ fun DictationScreen(
         if (inlineVoiceInput) Settings.PREF_VOICE_INPUT_SHORT_FORM_IGNORED_KEYS else null,
         if (inlineVoiceInput) R.string.voice_long_form else null,
         if (inlineVoiceInput) Settings.PREF_VOICE_INPUT_KEEP_TYPING else null,
+        if (inlineVoiceInput) Settings.PREF_VOICE_INPUT_LONG_FORM_BEEPS else null,
         if (inlineVoiceInput) R.string.settings_category_voice_recognition else null,
         if (inlineVoiceInput && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
             Settings.PREF_VOICE_INPUT_PREFER_OFFLINE else null,
@@ -86,6 +87,9 @@ fun DictationScreen(
 }
 
 fun createDictationSettings(context: Context) = listOf(
+    Setting(context, Settings.PREF_VOICE_INPUT_LONG_FORM_BEEPS,
+        R.string.voice_input_long_form_beeps, R.string.voice_input_long_form_beeps_summary
+    ) { SwitchPreference(it, Defaults.PREF_VOICE_INPUT_LONG_FORM_BEEPS) },
     Setting(context, Settings.PREF_VOICE_INPUT_SHORT_FORM_KEEP_ON_TAB,
         R.string.voice_input_short_form_keep_on_tab, R.string.voice_input_short_form_keep_on_tab_summary
     ) { SwitchPreference(it, Defaults.PREF_VOICE_INPUT_SHORT_FORM_KEEP_ON_TAB) },

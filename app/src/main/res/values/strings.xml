@@ -1035,8 +1035,14 @@ New dictionary:
     <string name="wider_space_bar">Wider space bar</string>
     <!-- Description for "wider_space_bar" option. -->
     <string name="wider_space_bar_summary">About 15% wider, taking the space from the keys next to it</string>
-    <!-- Section heading for the dictation options -->
-    <string name="settings_category_dictation">Dictation settings</string>
+    <!-- Title of the settings screen holding every dictation option -->
+    <string name="settings_screen_dictation">Dictation</string>
+    <!-- Section heading on the dictation screen: how dictated text is punctuated and capitalised -->
+    <string name="settings_category_voice_punctuation">Punctuation</string>
+    <!-- Section heading on the dictation screen: which recognition engine is used, and how -->
+    <string name="settings_category_voice_recognition">Speech recognition</string>
+    <!-- Section heading on the dictation screen: logging for diagnosing dictation problems -->
+    <string name="settings_category_voice_troubleshooting">Troubleshooting</string>
     <!-- Switch allowing typing while dictation is still running -->
     <string name="voice_input_keep_typing">Keep dictating while typing</string>
     <!-- Description for "voice_input_keep_typing" option. -->

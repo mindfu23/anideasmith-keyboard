@@ -34,6 +34,7 @@ fun MainSettingsScreen(
     onClickAbout: () -> Unit,
     onClickTextCorrection: () -> Unit,
     onClickPreferences: () -> Unit,
+    onClickDictation: () -> Unit,
     onClickToolbar: () -> Unit,
     onClickGestureTyping: () -> Unit,
     onClickDataGathering: () -> Unit,
@@ -64,6 +65,11 @@ fun MainSettingsScreen(
                     name = stringResource(R.string.settings_screen_preferences),
                     onClick = onClickPreferences,
                     icon = R.drawable.ic_settings_preferences
+                ) { NextScreenIcon() }
+                Preference(
+                    name = stringResource(R.string.settings_screen_dictation),
+                    onClick = onClickDictation,
+                    icon = R.drawable.ic_settings_dictation
                 ) { NextScreenIcon() }
                 Preference(
                     name = stringResource(R.string.settings_screen_appearance),
@@ -124,7 +130,7 @@ private fun PreviewScreen() {
     initPreview(LocalContext.current)
     Theme(previewDark) {
         Surface {
-            MainSettingsScreen({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})
+            MainSettingsScreen({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})
         }
     }
 }

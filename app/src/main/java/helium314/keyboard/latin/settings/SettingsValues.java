@@ -37,10 +37,12 @@ import helium314.keyboard.latin.utils.ScriptUtils;
 import helium314.keyboard.latin.utils.SubtypeSettings;
 import helium314.keyboard.latin.utils.SubtypeUtilsKt;
 import helium314.keyboard.latin.utils.ToolbarMode;
+import helium314.keyboard.latin.voice.VoiceSessionPolicy;
 
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 
 /**
  * When you call the constructor of this class, you may want to change the current system locale by
@@ -136,6 +138,8 @@ public class SettingsValues {
     public final boolean mVoiceInputLogText;
     public final String mVoiceInputService;
     public final boolean mVoiceInputKeepTyping;
+    public final boolean mVoiceInputShortFormKeepOnTab;
+    public final Set<VoiceSessionPolicy.ShortFormKeyGroup> mVoiceInputShortFormIgnoredKeys;
     public final boolean mWiderSpaceBar;
     public final float mBottomPaddingScale;
     public final float mSidePaddingScale;
@@ -237,6 +241,9 @@ public class SettingsValues {
         mVoiceInputPreferOffline = prefs.getBoolean(Settings.PREF_VOICE_INPUT_PREFER_OFFLINE, Defaults.PREF_VOICE_INPUT_PREFER_OFFLINE);
         mVoiceInputService = prefs.getString(Settings.PREF_VOICE_INPUT_SERVICE, Defaults.PREF_VOICE_INPUT_SERVICE);
         mVoiceInputKeepTyping = prefs.getBoolean(Settings.PREF_VOICE_INPUT_KEEP_TYPING, Defaults.PREF_VOICE_INPUT_KEEP_TYPING);
+        mVoiceInputShortFormKeepOnTab = prefs.getBoolean(Settings.PREF_VOICE_INPUT_SHORT_FORM_KEEP_ON_TAB, Defaults.PREF_VOICE_INPUT_SHORT_FORM_KEEP_ON_TAB);
+        mVoiceInputShortFormIgnoredKeys = VoiceSessionPolicy.ShortFormKeyGroup.Companion.parse(
+                prefs.getString(Settings.PREF_VOICE_INPUT_SHORT_FORM_IGNORED_KEYS, Defaults.PREF_VOICE_INPUT_SHORT_FORM_IGNORED_KEYS));
         mVoiceInputLogText = prefs.getBoolean(DebugSettings.PREF_LOG_DICTATED_TEXT, Defaults.PREF_LOG_DICTATED_TEXT);
         mWiderSpaceBar = prefs.getBoolean(Settings.PREF_WIDER_SPACE_BAR, Defaults.PREF_WIDER_SPACE_BAR);
         mAutoCorrectionEnabledPerUserSettings = prefs.getBoolean(Settings.PREF_AUTO_CORRECTION, Defaults.PREF_AUTO_CORRECTION);

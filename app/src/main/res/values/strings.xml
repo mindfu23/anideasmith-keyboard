@@ -1039,6 +1039,32 @@ New dictionary:
     <string name="settings_screen_dictation">Dictation</string>
     <!-- Section heading on the dictation screen: how dictated text is punctuated and capitalised -->
     <string name="settings_category_voice_punctuation">Punctuation</string>
+    <!-- Section heading on the dictation screen: options for the plain microphone key's short-form dictation -->
+    <string name="settings_category_voice_short_form">Microphone key</string>
+    <!-- Switch letting Tab and shift-Tab leave the plain microphone key's dictation running -->
+    <string name="voice_input_short_form_keep_on_tab">Keep dictating through Tab</string>
+    <!-- Description for "voice_input_short_form_keep_on_tab" option. -->
+    <string name="voice_input_short_form_keep_on_tab_summary">Tab and shift-Tab indent or outdent without stopping dictation. Tabbing out of a form field still stops it.</string>
+    <!-- Opens a list of keys that do not stop the plain microphone key's dictation -->
+    <string name="voice_input_short_form_ignored_keys">Other keys that don\'t stop dictation</string>
+    <!-- Shown under "voice_input_short_form_ignored_keys" when nothing is selected -->
+    <string name="voice_input_short_form_ignored_keys_none">None: any other key stops dictation</string>
+    <!-- Key group in "voice_input_short_form_ignored_keys" -->
+    <string name="voice_input_key_group_shift">Shift and caps lock</string>
+    <!-- Key group in "voice_input_short_form_ignored_keys": ?123, ABC, emoji, clipboard, numpad, language -->
+    <string name="voice_input_key_group_layout_switch">Layout switches (?123, emoji, clipboard, language)</string>
+    <!-- Key group in "voice_input_short_form_ignored_keys" -->
+    <string name="voice_input_key_group_space">Space</string>
+    <!-- Key group in "voice_input_short_form_ignored_keys" -->
+    <string name="voice_input_key_group_enter">Enter</string>
+    <!-- Key group in "voice_input_short_form_ignored_keys" -->
+    <string name="voice_input_key_group_delete">Backspace</string>
+    <!-- Key group in "voice_input_short_form_ignored_keys" -->
+    <string name="voice_input_key_group_cursor">Cursor keys (arrows, word, line and page jumps)</string>
+    <!-- Key group in "voice_input_short_form_ignored_keys" -->
+    <string name="voice_input_key_group_undo_redo">Undo and redo</string>
+    <!-- Key group in "voice_input_short_form_ignored_keys" -->
+    <string name="voice_input_key_group_punctuation">Punctuation and symbols</string>
     <!-- Section heading on the dictation screen: which recognition engine is used, and how -->
     <string name="settings_category_voice_recognition">Speech recognition</string>
     <!-- Section heading on the dictation screen: logging for diagnosing dictation problems -->

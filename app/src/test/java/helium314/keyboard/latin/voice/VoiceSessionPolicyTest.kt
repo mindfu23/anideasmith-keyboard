@@ -2,7 +2,10 @@
 package helium314.keyboard.latin.voice
 
 import android.speech.SpeechRecognizer
+import android.text.InputType
+import helium314.keyboard.keyboard.internal.keyboard_parser.floris.KeyCode
 import helium314.keyboard.latin.voice.VoiceSessionPolicy.ErrorAction
+import helium314.keyboard.latin.voice.VoiceSessionPolicy.ShortFormKeyGroup
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -389,5 +392,50 @@ class VoiceSessionPolicyTest {
     @Test fun stoppingEndsTheSessionRatherThanReopeningIt() {
         assertFalse(VoiceSessionPolicy.shouldReopenSegmentedSession(
             isActive = false, longForm = true, msSinceLastResult = 0))
+    }
+
+    private fun ignores(code: Int, keepOnTab: Boolean = true, groups: Set<ShortFormKeyGroup> = emptySet()) =
+        VoiceSessionPolicy.shortFormIgnoresKey(code, keepOnTab, groups)
+
+    @Test fun tabAndShiftTabLeaveShortFormRunningOnlyWhileTheSwitchIsOn() {
+        assertTrue(ignores(KeyCode.TAB))
+        assertTrue(ignores(KeyCode.TAB_BACK))
+        assertFalse(ignores(KeyCode.TAB, keepOnTab = false))
+        assertFalse(ignores(KeyCode.TAB_BACK, keepOnTab = false))
+    }
+
+    @Test fun anyOtherKeyStillStopsShortFormByDefault() {
+        for (code in listOf('a'.code, ' '.code, '\n'.code, '.'.code, KeyCode.DELETE, KeyCode.SHIFT, KeyCode.ARROW_LEFT))
+            assertFalse(ignores(code), "code $code")
+    }
+
+    @Test fun eachChosenGroupSparesItsKeysAndNoOthers() {
+        assertTrue(ignores(' '.code, groups = setOf(ShortFormKeyGroup.SPACE)))
+        assertTrue(ignores('\n'.code, groups = setOf(ShortFormKeyGroup.ENTER)))
+        assertTrue(ignores(KeyCode.DELETE, groups = setOf(ShortFormKeyGroup.DELETE)))
+        assertTrue(ignores(KeyCode.CAPS_LOCK, groups = setOf(ShortFormKeyGroup.SHIFT)))
+        assertTrue(ignores(KeyCode.SYMBOL_ALPHA, groups = setOf(ShortFormKeyGroup.LAYOUT_SWITCH)))
+        assertTrue(ignores(KeyCode.WORD_RIGHT, groups = setOf(ShortFormKeyGroup.CURSOR)))
+        assertTrue(ignores(KeyCode.UNDO, groups = setOf(ShortFormKeyGroup.UNDO_REDO)))
+        assertTrue(ignores('?'.code, groups = setOf(ShortFormKeyGroup.PUNCTUATION)))
+        // punctuation is not a licence for letters, digits or the space
+        for (code in listOf('a'.code, '7'.code, ' '.code, 'é'.code))
+            assertFalse(ignores(code, groups = setOf(ShortFormKeyGroup.PUNCTUATION)), "code $code")
+    }
+
+    @Test fun theStoredKeyListSurvivesARoundTripAndForgetsUnknownNames() {
+        val groups = setOf(ShortFormKeyGroup.CURSOR, ShortFormKeyGroup.SPACE)
+        assertEquals(groups, ShortFormKeyGroup.parse(ShortFormKeyGroup.serialize(groups)))
+        assertEquals(setOf(ShortFormKeyGroup.ENTER), ShortFormKeyGroup.parse("ENTER;RENAMED_LATER"))
+        assertEquals(emptySet(), ShortFormKeyGroup.parse(""))
+        assertEquals(emptySet(), ShortFormKeyGroup.parse(null))
+    }
+
+    @Test fun onlyAFieldWithNoInputTypeCountsAsLeavingIt() {
+        // measured 2026-08-16: a Tab out of a form field restarts input with TYPE_NULL...
+        assertTrue(VoiceSessionPolicy.leftTheField(InputType.TYPE_NULL))
+        // ...while the same app restarting input on the field it is in keeps its real type
+        assertFalse(VoiceSessionPolicy.leftTheField(0x0002C0A1))
+        assertFalse(VoiceSessionPolicy.leftTheField(InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE))
     }
 }

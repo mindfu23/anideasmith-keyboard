@@ -37,7 +37,11 @@ import helium314.keyboard.settings.Setting
 import helium314.keyboard.settings.SettingsActivity
 import helium314.keyboard.settings.SettingsWithoutKey
 import helium314.keyboard.settings.initPreview
+import androidx.compose.material3.Text
+import helium314.keyboard.latin.voice.VoiceSessionPolicy.ShortFormKeyGroup
+import helium314.keyboard.settings.dialogs.MultiListPickerDialog
 import helium314.keyboard.settings.preferences.ListPreference
+import helium314.keyboard.settings.preferences.Preference
 import helium314.keyboard.settings.preferences.SwitchPreference
 
 /**
@@ -61,6 +65,9 @@ fun DictationScreen(
         if (inlineVoiceInput) Settings.PREF_VOICE_INPUT_AUTO_PUNCTUATION else null,
         if (inlineVoiceInput) Settings.PREF_VOICE_INPUT_SPOKEN_PUNCTUATION else null,
         if (inlineVoiceInput) Settings.PREF_VOICE_INPUT_SENTENCE_CAPS else null,
+        if (inlineVoiceInput) R.string.settings_category_voice_short_form else null,
+        if (inlineVoiceInput) Settings.PREF_VOICE_INPUT_SHORT_FORM_KEEP_ON_TAB else null,
+        if (inlineVoiceInput) Settings.PREF_VOICE_INPUT_SHORT_FORM_IGNORED_KEYS else null,
         if (inlineVoiceInput) R.string.voice_long_form else null,
         if (inlineVoiceInput) Settings.PREF_VOICE_INPUT_KEEP_TYPING else null,
         if (inlineVoiceInput) R.string.settings_category_voice_recognition else null,
@@ -79,6 +86,33 @@ fun DictationScreen(
 }
 
 fun createDictationSettings(context: Context) = listOf(
+    Setting(context, Settings.PREF_VOICE_INPUT_SHORT_FORM_KEEP_ON_TAB,
+        R.string.voice_input_short_form_keep_on_tab, R.string.voice_input_short_form_keep_on_tab_summary
+    ) { SwitchPreference(it, Defaults.PREF_VOICE_INPUT_SHORT_FORM_KEEP_ON_TAB) },
+    Setting(context, Settings.PREF_VOICE_INPUT_SHORT_FORM_IGNORED_KEYS,
+        R.string.voice_input_short_form_ignored_keys
+    ) { setting ->
+        val prefs = LocalContext.current.prefs()
+        var showDialog by remember { mutableStateOf(false) }
+        val selected = ShortFormKeyGroup.parse(
+            prefs.getString(setting.key, Defaults.PREF_VOICE_INPUT_SHORT_FORM_IGNORED_KEYS))
+        Preference(
+            name = setting.title,
+            description = if (selected.isEmpty()) stringResource(R.string.voice_input_short_form_ignored_keys_none)
+                else selected.sortedBy { it.ordinal }.map { stringResource(it.labelRes()) }.joinToString(", "),
+            onClick = { showDialog = true }
+        )
+        if (showDialog) {
+            MultiListPickerDialog(
+                onDismissRequest = { showDialog = false },
+                items = ShortFormKeyGroup.entries,
+                onConfirmed = { prefs.edit { putString(setting.key, ShortFormKeyGroup.serialize(it)) } },
+                title = { Text(setting.title) },
+                initialSelection = selected.toList(),
+                getItemName = { stringResource(it.labelRes()) },
+            )
+        }
+    },
     Setting(context, Settings.PREF_USE_INLINE_VOICE_INPUT,
         R.string.use_inline_voice_input, R.string.use_inline_voice_input_summary
     ) { setting ->
@@ -169,4 +203,15 @@ private fun Preview() {
             DictationScreen { }
         }
     }
+}
+
+private fun ShortFormKeyGroup.labelRes() = when (this) {
+    ShortFormKeyGroup.SHIFT -> R.string.voice_input_key_group_shift
+    ShortFormKeyGroup.LAYOUT_SWITCH -> R.string.voice_input_key_group_layout_switch
+    ShortFormKeyGroup.SPACE -> R.string.voice_input_key_group_space
+    ShortFormKeyGroup.ENTER -> R.string.voice_input_key_group_enter
+    ShortFormKeyGroup.DELETE -> R.string.voice_input_key_group_delete
+    ShortFormKeyGroup.CURSOR -> R.string.voice_input_key_group_cursor
+    ShortFormKeyGroup.UNDO_REDO -> R.string.voice_input_key_group_undo_redo
+    ShortFormKeyGroup.PUNCTUATION -> R.string.voice_input_key_group_punctuation
 }

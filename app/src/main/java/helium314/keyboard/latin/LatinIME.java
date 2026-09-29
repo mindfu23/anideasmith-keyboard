@@ -894,6 +894,15 @@ public class LatinIME extends InputMethodService implements
 
     private void onStartInputInternal(final EditorInfo editorInfo, final boolean restarting) {
         super.onStartInput(editorInfo, restarting);
+        // Focus has left the field being dictated into -- a Tab in a form, usually. End the session
+        // now rather than at onFinishInputView, a third of a second later: in between, the engine's
+        // next partial would be written into whatever field comes next. Nothing is carried over;
+        // the next field starts with no dictation and an empty record.
+        if (isDictating() && editorInfo != null && VoiceSessionPolicy.INSTANCE.leftTheField(editorInfo.inputType)) {
+            cancelVoiceInput("left the field");
+            mVoiceStreamed.setLength(0);
+            mVoiceFrozen.setLength(0);
+        }
 
         final RichInputMethodSubtype subtypeForApp = editorInfo == null
             ? null :
@@ -1493,7 +1502,8 @@ public class LatinIME extends InputMethodService implements
             onVoiceInputKey(true);
         } else {
             // any other key ends dictation, and is then handled as normal input
-            onUserInputDuringDictation("key press");
+            onUserInputDuringDictation("key press", event.getKeyCode() != Event.NOT_A_KEY_CODE
+                    ? event.getKeyCode() : event.getCodePoint());
         }
         final InputTransaction completeInputTransaction =
                 mInputLogic.onCodeInput(mSettings.getCurrent(), event,
@@ -1911,12 +1921,34 @@ public class LatinIME extends InputMethodService implements
                 && isDictating() && mVoiceInputController.getLongForm();
     }
 
-    /** The user is putting something of their own into the field while a session may be running. */
-    private void onUserInputDuringDictation(final String reason) {
+    /**
+     * The user is putting something of their own into the field while a session may be running.
+     *
+     * @param code the key code, or the code point typed when there is none; NOT_A_KEY_CODE when
+     *             the input is not a single key (a gesture, a multi-character string)
+     */
+    private void onUserInputDuringDictation(final String reason, final int code) {
         if (!isDictating()) return;
-        // dictation continues; stop correcting what the input is about to land behind
-        if (keepsTypingDuringDictation()) freezeVoiceText();
-        else cancelVoiceInput(reason);
+        if (keepsTypingDuringDictation()) {
+            // dictation continues; stop correcting what the input is about to land behind
+            freezeVoiceText();
+        } else if (shortFormIgnoresKey(code)) {
+            freezeVoiceText();
+            // The key moves the cursor itself -- an indent, a space, an arrow -- and that move has
+            // to read as expected, or onUpdateSelection ends the session the key was meant to spare.
+            mVoiceInputLastWrite = SystemClock.uptimeMillis();
+            Log.i(TAG, "short-form dictation continues through key " + code);
+        } else {
+            cancelVoiceInput(reason);
+        }
+    }
+
+    /** Whether the user has let the plain microphone key's dictation carry on through this key. */
+    private boolean shortFormIgnoresKey(final int code) {
+        if (code == Event.NOT_A_KEY_CODE || mVoiceInputController.getLongForm()) return false;
+        final SettingsValues settingsValues = mSettings.getCurrent();
+        return VoiceSessionPolicy.INSTANCE.shortFormIgnoresKey(code,
+                settingsValues.mVoiceInputShortFormKeepOnTab, settingsValues.mVoiceInputShortFormIgnoredKeys);
     }
 
     private void cancelVoiceInput(final String reason) {
@@ -2098,7 +2130,8 @@ public class LatinIME extends InputMethodService implements
         // Keys that emit a whole string do not come through onEvent, so this is their only chance
         // to end short-form dictation, or draw the freeze line before the text lands behind our
         // dictated run.
-        onUserInputDuringDictation("text key");
+        onUserInputDuringDictation("text key", rawText.codePointCount(0, rawText.length()) == 1
+                ? rawText.codePointAt(0) : Event.NOT_A_KEY_CODE);
         // TODO: have the keyboard pass the correct key code when we need it.
         Event event = Event.createSoftwareTextEvent(rawText, KeyCode.MULTIPLE_CODE_POINTS, null);
         InputTransaction completeInputTransaction = mInputLogic.onTextInput(mSettings.getCurrent(),
@@ -2112,7 +2145,7 @@ public class LatinIME extends InputMethodService implements
         // Gesture typing does not go through onEvent, so the any-key-cancels rule there does not
         // cover it. Without this, dictation could keep running while a gesture is committed and
         // the two would interleave text in the same field.
-        onUserInputDuringDictation("gesture typing");
+        onUserInputDuringDictation("gesture typing", Event.NOT_A_KEY_CODE);
         mInputLogic.onStartBatchInput(mSettings.getCurrent(), mKeyboardSwitcher, mHandler);
         mGestureConsumer.onGestureStarted(mRichImm.getCurrentSubtypeLocale(), mKeyboardSwitcher.getKeyboard());
     }

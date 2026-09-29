@@ -3,6 +3,9 @@ package helium314.keyboard.latin.voice
 
 import android.os.Build
 import android.speech.SpeechRecognizer
+import android.text.InputType
+import helium314.keyboard.keyboard.internal.keyboard_parser.floris.KeyCode
+import helium314.keyboard.latin.common.Constants
 
 /**
  * The decisions a dictation session makes, kept apart from the machinery that carries them out so
@@ -225,4 +228,63 @@ internal object VoiceSessionPolicy {
 
     /** A cursor move we caused is not a reason to stop; one the user made is. */
     fun cursorMoveEndsDictation(msSinceOwnWrite: Long) = msSinceOwnWrite >= WRITE_SETTLE_MS
+
+    /**
+     * Keys the user can let short-form dictation carry on through. Short form stops on any other
+     * key, which is what people expect from a microphone key; these are the exceptions they opt
+     * into. Stored by [name] in [Settings.PREF_VOICE_INPUT_SHORT_FORM_IGNORED_KEYS], so renaming
+     * an entry forgets it.
+     */
+    enum class ShortFormKeyGroup(private val matches: (Int) -> Boolean) {
+        SHIFT({ it == KeyCode.SHIFT || it == KeyCode.CAPS_LOCK }),
+        LAYOUT_SWITCH({ it in setOf(KeyCode.SYMBOL_ALPHA, KeyCode.ALPHA, KeyCode.SYMBOL, KeyCode.NUMPAD,
+            KeyCode.EMOJI, KeyCode.CLIPBOARD, KeyCode.LANGUAGE_SWITCH) }),
+        SPACE({ it == Constants.CODE_SPACE }),
+        ENTER({ it == Constants.CODE_ENTER || it == KeyCode.SHIFT_ENTER }),
+        DELETE({ it == KeyCode.DELETE }),
+        CURSOR({ it in setOf(KeyCode.ARROW_LEFT, KeyCode.ARROW_RIGHT, KeyCode.ARROW_UP, KeyCode.ARROW_DOWN,
+            KeyCode.WORD_LEFT, KeyCode.WORD_RIGHT, KeyCode.PAGE_UP, KeyCode.PAGE_DOWN,
+            KeyCode.MOVE_START_OF_LINE, KeyCode.MOVE_END_OF_LINE, KeyCode.MOVE_START_OF_PAGE,
+            KeyCode.MOVE_END_OF_PAGE) }),
+        UNDO_REDO({ it == KeyCode.UNDO || it == KeyCode.REDO }),
+        // anything that types a character that is neither a letter, a digit nor a space
+        PUNCTUATION({ it > Constants.CODE_SPACE && !Character.isLetterOrDigit(it) && !Character.isWhitespace(it) });
+
+        fun matches(code: Int) = matches.invoke(code)
+
+        companion object {
+            /** The stored form: names joined by ";". Unknown names are dropped, not an error. */
+            fun parse(stored: String?): Set<ShortFormKeyGroup> =
+                stored.orEmpty().split(";").mapNotNull { name -> entries.firstOrNull { it.name == name } }.toSet()
+
+            fun serialize(groups: Collection<ShortFormKeyGroup>) = groups.sortedBy { it.ordinal }.joinToString(";") { it.name }
+        }
+    }
+
+    /**
+     * Whether short-form dictation carries on through a key the user pressed.
+     *
+     * Tab has its own switch rather than a place in the list because it is the key this was asked
+     * for: indenting or outdenting a line mid-sentence. In a form, Tab moves to the next field
+     * instead, and dictation still ends there — leaving the field ends it, see [leftTheField].
+     *
+     * @param code the event's key code when it has one, otherwise the code point it types
+     */
+    fun shortFormIgnoresKey(code: Int, keepOnTab: Boolean, groups: Set<ShortFormKeyGroup>) =
+        (keepOnTab && (code == KeyCode.TAB || code == KeyCode.TAB_BACK || code == Constants.CODE_TAB))
+                || groups.any { it.matches(code) }
+
+    /**
+     * Whether a restarted input means focus has left the field dictation was writing into.
+     *
+     * Measured on 2026-08-16, tabbing through a web form while dictating, three times out of three:
+     * about 35ms after the Tab the input restarts with TYPE_NULL and no cursor, the keyboard's view
+     * does not finish until about 300ms later, and in between a partial wrote 6 to 16 characters
+     * that belonged to the field just left. Ending the session on the restart, not on the finish,
+     * is what keeps them out of the next field.
+     *
+     * The same app also restarts input on the field it is already in — 2 of 6 restarts during
+     * dictation that day — and those arrive with a real input type, so they do not end anything.
+     */
+    fun leftTheField(inputType: Int) = inputType and InputType.TYPE_MASK_CLASS == InputType.TYPE_NULL
 }

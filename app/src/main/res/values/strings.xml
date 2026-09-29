@@ -1040,7 +1040,7 @@ New dictionary:
     <!-- Switch allowing typing while dictation is still running -->
     <string name="voice_input_keep_typing">Keep dictating while typing</string>
     <!-- Description for "voice_input_keep_typing" option. -->
-    <string name="voice_input_keep_typing_summary">Typing, gesture typing and picking a suggestion no longer stop dictation.</string>
+    <string name="voice_input_keep_typing_summary">Long-form dictation only. Typing, gesture typing and moving the cursor no longer stop it. The plain microphone key always stops when you type or leave the field.</string>
     <!-- Message shown when dictation ended without recognising anything -->
     <string name="voice_input_no_speech">No speech recognised</string>
 

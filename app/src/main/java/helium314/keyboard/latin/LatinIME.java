@@ -1491,14 +1491,9 @@ public class LatinIME extends InputMethodService implements
             // long-press action at all, so with this feature disabled a long-press must keep
             // doing nothing rather than start switching input methods.
             onVoiceInputKey(true);
-        } else if (mVoiceInputController != null && mVoiceInputController.isActive()) {
-            if (mSettings.getCurrent().mVoiceInputKeepTyping) {
-                // dictation continues; stop correcting what the keystroke is about to land behind
-                freezeVoiceText();
-            } else {
-                // any other key ends dictation, and is then handled as normal input
-                cancelVoiceInput("key press");
-            }
+        } else {
+            // any other key ends dictation, and is then handled as normal input
+            onUserInputDuringDictation("key press");
         }
         final InputTransaction completeInputTransaction =
                 mInputLogic.onCodeInput(mSettings.getCurrent(), event,
@@ -1898,18 +1893,30 @@ public class LatinIME extends InputMethodService implements
         }
     }
 
-    /**
-     * Whether typing, gestures and suggestions should leave dictation running. Applies to both
-     * modes: a quick message often wants a spoken sentence and a typed correction.
-     */
     /** Whether a dictation session is running, whatever the recognizer is doing this instant. */
     boolean isDictating() {
         return mVoiceInputController != null && mVoiceInputController.isActive();
     }
 
+    /**
+     * Whether typing, gestures and cursor moves should leave dictation running. Long form only.
+     *
+     * Short form is one thought spoken into a field, and the user's decision of 2026-09-29 is that
+     * it behaves the way every other keyboard's microphone does: touch a key, move the cursor or
+     * leave the field and it stops. Long form keeps the setting, since composing prose is where a
+     * spoken sentence and a typed correction in the same breath is actually wanted.
+     */
     private boolean keepsTypingDuringDictation() {
         return mSettings.getCurrent().mVoiceInputKeepTyping
-                && mVoiceInputController != null && mVoiceInputController.isActive();
+                && isDictating() && mVoiceInputController.getLongForm();
+    }
+
+    /** The user is putting something of their own into the field while a session may be running. */
+    private void onUserInputDuringDictation(final String reason) {
+        if (!isDictating()) return;
+        // dictation continues; stop correcting what the input is about to land behind
+        if (keepsTypingDuringDictation()) freezeVoiceText();
+        else cancelVoiceInput(reason);
     }
 
     private void cancelVoiceInput(final String reason) {
@@ -2089,8 +2096,9 @@ public class LatinIME extends InputMethodService implements
     public void onTextInput(@Nullable String rawText) {
         if (rawText == null) return;
         // Keys that emit a whole string do not come through onEvent, so this is their only chance
-        // to draw the freeze line before the text lands behind our dictated run.
-        freezeVoiceText();
+        // to end short-form dictation, or draw the freeze line before the text lands behind our
+        // dictated run.
+        onUserInputDuringDictation("text key");
         // TODO: have the keyboard pass the correct key code when we need it.
         Event event = Event.createSoftwareTextEvent(rawText, KeyCode.MULTIPLE_CODE_POINTS, null);
         InputTransaction completeInputTransaction = mInputLogic.onTextInput(mSettings.getCurrent(),
@@ -2104,8 +2112,7 @@ public class LatinIME extends InputMethodService implements
         // Gesture typing does not go through onEvent, so the any-key-cancels rule there does not
         // cover it. Without this, dictation could keep running while a gesture is committed and
         // the two would interleave text in the same field.
-        if (keepsTypingDuringDictation()) freezeVoiceText();
-        else cancelVoiceInput("gesture typing");
+        onUserInputDuringDictation("gesture typing");
         mInputLogic.onStartBatchInput(mSettings.getCurrent(), mKeyboardSwitcher, mHandler);
         mGestureConsumer.onGestureStarted(mRichImm.getCurrentSubtypeLocale(), mKeyboardSwitcher.getKeyboard());
     }

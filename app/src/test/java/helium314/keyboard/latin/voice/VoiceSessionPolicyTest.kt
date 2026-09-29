@@ -494,4 +494,33 @@ class VoiceSessionPolicyTest {
         assertEquals(" buy it.", " I want to buy it.".substring(cover.engineCovered))
         assertEquals("", VoiceSessionPolicy.frozenCarryAfterFinal(" I want to by it.", cover))
     }
+
+    // Option B, chosen 2026-09-29: a freeze for user input drops the partial's provisional mark.
+
+    @Test fun onlyATrailingMarkCountsAsProvisional() {
+        assertTrue(VoiceSessionPolicy.endsWithProvisionalMark(" which does some simple calcul."))
+        assertTrue(VoiceSessionPolicy.endsWithProvisionalMark(" in this?"))
+        assertFalse(VoiceSessionPolicy.endsWithProvisionalMark(" we often, "))
+        assertFalse(VoiceSessionPolicy.endsWithProvisionalMark(""))
+    }
+
+    /** What is written after a freeze whose provisional mark was dropped, as streamVoiceText does it. */
+    private fun resumedAfterDrop(frozenWithoutMark: String, engine: String): String {
+        val cover = VoiceSessionPolicy.frozenCover(frozenWithoutMark, engine)
+        val text = engine.substring(cover.engineCovered)
+        return if (cover.agrees && cover.frozenUsed == frozenWithoutMark.length) VoiceSessionPolicy.dropLeadingMarks(text) else text
+    }
+
+    @Test fun aSentenceThatGoesOnAfterTheKeyHasNoStrayMark() {
+        // captured: "calcul." frozen by a typed letter, then "ations based on."
+        assertEquals("ations based on.", resumedAfterDrop(" which does some simple calcul", " which does some simple calculations based on."))
+        assertEquals(" discussed it.", resumedAfterDrop(" we often", " we often discussed it."))
+        assertEquals("'s methods.", resumedAfterDrop(" each other", " each other's methods."))
+    }
+
+    @Test fun aSentenceThatEndedAtTheKeyLosesItsMarkRatherThanPuttingItAfterTheKey() {
+        assertEquals("", resumedAfterDrop(" I finished", " I finished."))
+        assertEquals(" Next one.", resumedAfterDrop(" I finished", " I finished. Next one."))
+        assertEquals(" and more.", resumedAfterDrop(" I finished", " I finished, and more."))
+    }
 }

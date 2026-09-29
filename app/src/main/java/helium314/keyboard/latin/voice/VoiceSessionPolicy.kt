@@ -304,6 +304,25 @@ internal object VoiceSessionPolicy {
     fun frozenCarryAfterFinal(frozen: String, cover: FrozenCover): String =
         if (cover.agrees && cover.frozenUsed < frozen.length) frozen.substring(cover.frozenUsed) else ""
 
+    /**
+     * Marks the engine ends a partial with and takes back when the sentence goes on. Measured: "."
+     * mostly, "?" when the pitch rises; "!" for completeness.
+     */
+    private const val PROVISIONAL_MARKS = ".?!"
+
+    /** Whether streamed partial text ends with a mark the engine may yet replace. */
+    fun endsWithProvisionalMark(streamed: String) = streamed.isNotEmpty() && streamed.last() in PROVISIONAL_MARKS
+
+    /**
+     * [text] without the marks at its start. Used after a provisional mark was dropped at a freeze:
+     * if the sentence really did end there, the engine's mark arrives at the start of the resumed
+     * text, which is now *after* the user's keystroke — "finished\n." — so it is dropped too.
+     */
+    fun dropLeadingMarks(text: String) = text.dropWhile { it in SENTENCE_MARKS }
+
+    /** Only punctuation that ends or divides a clause: an apostrophe resumes a word ("other" + "'s"). */
+    private const val SENTENCE_MARKS = ".?!,;:"
+
     /** A cursor move we caused is not a reason to stop; one the user made is. */
     fun cursorMoveEndsDictation(msSinceOwnWrite: Long) = msSinceOwnWrite >= WRITE_SETTLE_MS
 

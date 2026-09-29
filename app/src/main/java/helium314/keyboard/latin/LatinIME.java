@@ -168,6 +168,10 @@ public class LatinIME extends InputMethodService implements
     // The condition holds for every payload that follows, so reporting each one counts payloads
     // rather than freezes: five edits in one session read as forty-eight faults.
     private boolean mVoiceDivergenceLogged = false;
+    /** Whether mVoiceStreamed came from a partial, so its last mark is the engine's provisional one. */
+    private boolean mVoiceStreamedProvisional = false;
+    /** Whether the frozen text ends where a provisional mark was taken off it. */
+    private boolean mVoiceFrozenEndDropped = false;
     // whether the dictation state is currently being shown: the highlighted voice key and the
     // space bar label. Not a view — see showDictationUi for the row that used to live here.
     private boolean mVoiceInputUiShown = false;
@@ -908,6 +912,8 @@ public class LatinIME extends InputMethodService implements
             cancelVoiceInput("left the field");
             mVoiceStreamed.setLength(0);
             mVoiceFrozen.setLength(0);
+            mVoiceStreamedProvisional = false;
+            mVoiceFrozenEndDropped = false;
         }
 
         final RichInputMethodSubtype subtypeForApp = editorInfo == null
@@ -1612,6 +1618,44 @@ public class LatinIME extends InputMethodService implements
         mVoiceFrozen.append(mVoiceStreamed);
         mVoiceStreamed.setLength(0);
         mVoiceDivergenceLogged = false;
+        mVoiceFrozenEndDropped = false;
+    }
+
+    /**
+     * Freeze because the user is putting something of their own into the field, first taking off the
+     * provisional mark the engine ended its last partial with.
+     *
+     * Every partial ends in "." (or "?"), which the next partial replaces if the sentence goes on.
+     * Freezing mid-sentence used to keep it, and the words that followed landed after it and the
+     * user's keystroke: "calcul.ations", "this can. be measured.", "each other.s methods" -- all
+     * from one session on 2026-09-29. The user chose this over keeping the mark, knowing the cost:
+     * Return pressed in the second before the engine confirms a sentence loses its full stop. See
+     * NOTES.md, "option B".
+     *
+     * Only for user input. A spoken "new line" or "outdent" freezes too, but those are dictation,
+     * and the mark before them is the user's sentence end.
+     */
+    private void freezeVoiceTextForUserInput() {
+        if (!isDictating() || mVoiceStreamed.length() == 0) return;
+        final boolean dropped = dropProvisionalMark();
+        freezeVoiceText();
+        mVoiceFrozenEndDropped = dropped;
+    }
+
+    /** Remove the streamed text's provisional mark from the field, if the field still ends with it. */
+    private boolean dropProvisionalMark() {
+        if (!mVoiceStreamedProvisional
+                || !VoiceSessionPolicy.INSTANCE.endsWithProvisionalMark(mVoiceStreamed.toString())) return false;
+        final RichInputConnection connection = mInputLogic.mConnection;
+        final char mark = mVoiceStreamed.charAt(mVoiceStreamed.length() - 1);
+        final CharSequence before = connection.getTextBeforeCursor(1, 0);
+        // the field no longer ends with our text; deleting would take something that is not ours
+        if (before == null || before.length() != 1 || before.charAt(0) != mark) return false;
+        mVoiceInputLastWrite = SystemClock.uptimeMillis();
+        connection.deleteTextBeforeCursor(1);
+        mVoiceStreamed.setLength(mVoiceStreamed.length() - 1);
+        if (DebugFlags.DEBUG_ENABLED) Log.i(TAG, "dropped the provisional '" + mark + "' before freezing");
+        return true;
     }
 
     /**
@@ -1804,7 +1848,10 @@ public class LatinIME extends InputMethodService implements
         // which is why the frozen part has to be subtracted rather than forgotten.
         final String frozenBefore = mVoiceFrozen.toString();
         final VoiceSessionPolicy.FrozenCover cover = frozenCover(fullText);
-        final String text = fullText.substring(cover.getEngineCovered());
+        String text = fullText.substring(cover.getEngineCovered());
+        // after a dropped provisional mark, a mark here would land after the user's keystroke
+        if (mVoiceFrozenEndDropped && cover.getAgrees() && cover.getFrozenUsed() == frozenBefore.length())
+            text = VoiceSessionPolicy.INSTANCE.dropLeadingMarks(text);
         final String onScreen = mVoiceStreamed.toString();
         int agreed = VoiceSessionPolicy.INSTANCE.agreedPrefixLength(onScreen, text);
         // Not onScreen.length() - agreed: on a final, what lies past the engine's text is the next
@@ -1858,6 +1905,7 @@ public class LatinIME extends InputMethodService implements
         if (!finalised) {
             mVoiceStreamed.setLength(0);
             mVoiceStreamed.append(text);
+            mVoiceStreamedProvisional = true;
             return;
         }
         // Past the end of the finalised utterance the engine has already sent words that belong to
@@ -1868,6 +1916,8 @@ public class LatinIME extends InputMethodService implements
                 ? onScreen.substring(text.length()) : "";
         mVoiceStreamed.setLength(0);
         mVoiceStreamed.append(overshoot);
+        // the overshoot is partial text, so its last mark is still the engine's guess
+        mVoiceStreamedProvisional = !overshoot.isEmpty();
         // Unindenting is a key event, not a character, so it cannot be streamed into place with the
         // words and happens here instead -- once, for a finalised utterance. Partials repeat the
         // whole utterance, so acting on those would walk the text left across the screen.
@@ -1881,6 +1931,8 @@ public class LatinIME extends InputMethodService implements
         mVoiceFrozen.setLength(0);
         mVoiceFrozen.append(carry);
         mVoiceDivergenceLogged = false;
+        // the carry ends where the frozen text did, so a dropped mark there is still dropped
+        if (carry.isEmpty()) mVoiceFrozenEndDropped = false;
         if (DebugFlags.DEBUG_ENABLED && !carry.isEmpty()) {
             Log.i(TAG, "carrying " + carry.length() + " frozen characters into the next utterance"
                     + dictationText("carry", carry));
@@ -1919,9 +1971,9 @@ public class LatinIME extends InputMethodService implements
         if (!isDictating()) return;
         if (keepsTypingDuringDictation()) {
             // dictation continues; stop correcting what the input is about to land behind
-            freezeVoiceText();
+            freezeVoiceTextForUserInput();
         } else if (shortFormIgnoresKey(code)) {
-            freezeVoiceText();
+            freezeVoiceTextForUserInput();
             // The key moves the cursor itself -- an indent, a space, an arrow -- and that move has
             // to read as expected, or onUpdateSelection ends the session the key was meant to spare.
             mVoiceInputLastWrite = SystemClock.uptimeMillis();
@@ -1959,6 +2011,8 @@ public class LatinIME extends InputMethodService implements
             Log.i(TAG, "voice input started");
             mVoiceStreamed.setLength(0);
             mVoiceFrozen.setLength(0);
+            mVoiceStreamedProvisional = false;
+            mVoiceFrozenEndDropped = false;
             showDictationUi();
         }
 
@@ -1975,6 +2029,8 @@ public class LatinIME extends InputMethodService implements
             // last final, which is the ordinary way of trailing off mid-sentence.
             mVoiceStreamed.setLength(0);
             mVoiceFrozen.setLength(0);
+            mVoiceStreamedProvisional = false;
+            mVoiceFrozenEndDropped = false;
         }
 
         @Override
@@ -2239,7 +2295,7 @@ public class LatinIME extends InputMethodService implements
     public void pickSuggestionManually(final SuggestedWordInfo suggestionInfo) {
         // The user is about to change text of their own accord, which is the same thing a keystroke
         // does: what dictation has already written stops being ours to correct.
-        freezeVoiceText();
+        freezeVoiceTextForUserInput();
         final InputTransaction completeInputTransaction = mInputLogic.onPickSuggestionManually(
                 mSettings.getCurrent(), suggestionInfo,
                 mKeyboardSwitcher.getKeyboardCapsMode(),

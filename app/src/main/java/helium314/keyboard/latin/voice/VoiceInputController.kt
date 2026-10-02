@@ -135,7 +135,8 @@ class VoiceInputController(private val context: Context, private val listener: L
         recoveries = 0
         segmented = false
         this.autoPunctuation = autoPunctuation
-        this.serviceComponent = service?.takeIf { it.isNotEmpty() }
+        // a saved choice of an engine known not to work for keyboards would fail on every press
+        this.serviceComponent = service?.takeIf { it.isNotEmpty() && !UnavailableEngines.isUnavailable(it) }
         this.longForm = longForm
         lastResultAt = SystemClock.uptimeMillis()
         startInternal(locale, preferOffline)

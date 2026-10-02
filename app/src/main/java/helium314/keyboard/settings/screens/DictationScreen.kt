@@ -38,6 +38,7 @@ import helium314.keyboard.settings.SettingsActivity
 import helium314.keyboard.settings.SettingsWithoutKey
 import helium314.keyboard.settings.initPreview
 import androidx.compose.material3.Text
+import helium314.keyboard.latin.voice.UnavailableEngines
 import helium314.keyboard.latin.voice.VoiceSessionPolicy.ShortFormKeyGroup
 import helium314.keyboard.settings.dialogs.MultiListPickerDialog
 import helium314.keyboard.settings.preferences.ListPreference
@@ -189,7 +190,11 @@ fun createDictationSettings(context: Context) = listOf(
                     label to ComponentName(info.serviceInfo.packageName, info.serviceInfo.name).flattenToString()
                 }
         }
-        ListPreference(setting, services, Defaults.PREF_VOICE_INPUT_SERVICE)
+        val unavailableNote = stringResource(R.string.voice_input_service_unavailable)
+        ListPreference(setting, services, Defaults.PREF_VOICE_INPUT_SERVICE,
+            isItemEnabled = { !UnavailableEngines.isUnavailable(it.second) },
+            getItemNote = { if (UnavailableEngines.isUnavailable(it.second)) unavailableNote else null }
+        )
     },
     Setting(context, DebugSettings.PREF_LOG_DICTATED_TEXT,
         R.string.log_dictated_text, R.string.log_dictated_text_summary

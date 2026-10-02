@@ -1031,6 +1031,8 @@ New dictionary:
     <string name="voice_input_service">Speech recognition service</string>
     <!-- List entry leaving the choice of speech recognition service to the system -->
     <string name="voice_input_service_default">System default</string>
+    <!-- Note under a speech recognition service that is installed but cannot be used from a keyboard -->
+    <string name="voice_input_service_unavailable">Unavailable: this engine can only listen while its own app is open</string>
     <!-- Switch making the space bar wider at the expense of the keys beside it -->
     <string name="wider_space_bar">Wider space bar</string>
     <!-- Description for "wider_space_bar" option. -->

@@ -146,6 +146,11 @@ public final class InputAttributes {
                 && (mEditorInfo.imeOptions & EditorInfo.IME_FLAG_FORCE_ASCII) == (editorInfo.imeOptions & EditorInfo.IME_FLAG_FORCE_ASCII);
     }
 
+    /** The app asked for no microphone key in this field, through the private IME option. */
+    public boolean isMicrophoneOffByApp() {
+        return hasNoMicrophoneKeyOption();
+    }
+
     private boolean hasNoMicrophoneKeyOption() {
         return InputAttributes.inPrivateImeOptions(mPackageNameForPrivateImeOptions, NO_MICROPHONE, mEditorInfo);
     }

@@ -20,6 +20,7 @@ import android.view.GestureDetector
 import android.view.GestureDetector.SimpleOnGestureListener
 import android.view.LayoutInflater
 import android.view.MotionEvent
+import android.text.InputType
 import android.view.View
 import android.view.View.OnLongClickListener
 import android.view.ViewGroup
@@ -71,6 +72,8 @@ import kotlinx.coroutines.withContext
 
 private const val PULSE_MILLIS = 900L
 private const val PULSE_MIN_ALPHA = 70
+/** Material red 700: reads as "failed" on light and dark themes alike, unlike any theme colour. */
+private const val VOICE_ERROR_COLOR = 0xFFD32F2F.toInt()
 
 @SuppressLint("InflateParams")
 class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int) :
@@ -282,8 +285,11 @@ class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int)
         voicePulse?.cancel()
         voicePulse = null
         // clear both, so a mode change never leaves the other key looking live
-        listOf(ToolbarKey.VOICE, ToolbarKey.VOICE_LONG_FORM).forEach {
-            voiceKeyView(it)?.background = defaultToolbarBackground.constantState?.newDrawable(resources)
+        // both copies of each key, pinned and in the toolbar, so no tint survives on the one not shown
+        listOf(ToolbarKey.VOICE, ToolbarKey.VOICE_LONG_FORM).forEach { key ->
+            listOf(pinnedKeys, toolbar).forEach {
+                it.findViewWithTag<View>(key)?.background = defaultToolbarBackground.constantState?.newDrawable(resources)
+            }
         }
         // The pinned keys stay put while dictating. They used to be hidden to give the dictation row
         // room for a preview of the words being heard, which cost the user tab and the cursor arrows
@@ -310,6 +316,20 @@ class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int)
             repeatCount = ValueAnimator.INFINITE
             addUpdateListener { background.alpha = it.animatedValue as Int }
             start()
+        }
+    }
+
+    /**
+     * Mark the voice key of the session that just failed, while the space bar says why. A steady
+     * red rather than the pulse, so it cannot be read as a session still running.
+     */
+    fun setVoiceInputError(longForm: Boolean) {
+        setVoiceInputActive(false)
+        val key = voiceKeyView(if (longForm) ToolbarKey.VOICE_LONG_FORM else ToolbarKey.VOICE) ?: return
+        key.background = GradientDrawable().apply {
+            colors = intArrayOf(VOICE_ERROR_COLOR, Color.TRANSPARENT)
+            gradientType = GradientDrawable.RADIAL_GRADIENT
+            gradientRadius = resources.getDimensionPixelSize(R.dimen.config_suggestions_strip_height) / 2.1f
         }
     }
 
@@ -566,7 +586,13 @@ class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int)
     }
 
     fun updateVoiceKey() {
-        val show = Settings.getValues().mShowsVoiceInputKey
+        val settingsValues = Settings.getValues()
+        // With built-in dictation, shown in every field, so both mic keys are always where the user
+        // expects them: it refuses where it should and says so (VoiceSessionPolicy.refusal), and
+        // needs no other voice IME. Upstream hides the key in those fields because it would hand them
+        // to another voice IME, which built-in dictation never does. Not where there is no editor.
+        val show = settingsValues.mShowsVoiceInputKey
+                || (settingsValues.mUseInlineVoiceInput && settingsValues.mInputAttributes.mInputType != InputType.TYPE_NULL)
         toolbar.findViewWithTag<View>(ToolbarKey.VOICE)?.isVisible = show
         pinnedKeys.findViewWithTag<View>(ToolbarKey.VOICE)?.isVisible = show
     }

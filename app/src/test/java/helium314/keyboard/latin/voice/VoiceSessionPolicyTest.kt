@@ -321,6 +321,35 @@ class VoiceSessionPolicyTest {
         assertEquals(0, agreed("", "latest"))
     }
 
+    // --- which fields built-in dictation refuses ---------------------------------------------
+
+    private fun refusal(inputType: Int, password: Boolean = false, appOff: Boolean = false) =
+        VoiceSessionPolicy.refusal(inputType, password, appOff)
+
+    @Test fun plainAndEmailTextIsDictated() {
+        assertEquals(null, refusal(InputType.TYPE_CLASS_TEXT))
+        assertEquals(null, refusal(InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS))
+    }
+
+    @Test fun passwordsAreRefusedWhateverElseIsTrue() {
+        val type = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+        assertEquals(VoiceSessionPolicy.Refusal.PASSWORD, refusal(type, password = true, appOff = true))
+    }
+
+    @Test fun numberPhoneAndDateFieldsAreRefused() {
+        listOf(InputType.TYPE_CLASS_NUMBER, InputType.TYPE_CLASS_PHONE, InputType.TYPE_CLASS_DATETIME).forEach {
+            assertEquals(VoiceSessionPolicy.Refusal.NOT_TEXT, refusal(it))
+        }
+    }
+
+    @Test fun anAppThatAskedForNoMicrophoneIsHonoured() {
+        assertEquals(VoiceSessionPolicy.Refusal.APP_REQUEST, refusal(InputType.TYPE_CLASS_TEXT, appOff = true))
+    }
+
+    @Test fun noEditorIsNotAFieldToRefuse() {
+        assertEquals(null, refusal(InputType.TYPE_NULL))
+    }
+
     // --- how much to delete, read from the field --------------------------------------------
 
     private fun inField(seen: String, keep: String, stale: String) =

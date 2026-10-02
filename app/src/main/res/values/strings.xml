@@ -1009,6 +1009,16 @@ New dictionary:
     <string name="voice_input_reconnecting">Reconnecting…</string>
     <!-- Shown when the recognition engine stopped responding and could not be revived -->
     <string name="voice_input_engine_stopped">Dictation stopped: the speech engine stopped responding</string>
+    <!-- Short dictation errors shown on the space bar for a few seconds, so keep them short -->
+    <string name="voice_input_error_engine_permission">Engine refused the microphone</string>
+    <string name="voice_input_error_keyboard_permission">Keyboard needs microphone access</string>
+    <string name="voice_input_error_no_engine">No speech engine available</string>
+    <string name="voice_input_error_language">Language not available</string>
+    <string name="voice_input_error_no_speech">Didn\'t catch anything</string>
+    <string name="voice_input_error_engine_stopped">Engine stopped, dictation ended</string>
+    <string name="voice_input_error_password">No dictation in password fields</string>
+    <string name="voice_input_error_not_text">No dictation in this field</string>
+    <string name="voice_input_error_app_request">This app has turned off dictation</string>
     <!-- Description of the button that ends dictation -->
     <string name="voice_input_stop">Stop dictation</string>
     <!-- Switch for engine-supplied punctuation and capitalisation while dictating -->

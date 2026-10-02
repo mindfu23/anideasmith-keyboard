@@ -142,6 +142,31 @@ internal object VoiceSessionPolicy {
         return written.length - agreed
     }
 
+    /** Why built-in dictation will not start in a field. Its key is still shown there, and says so. */
+    enum class Refusal { PASSWORD, NOT_TEXT, APP_REQUEST }
+
+    /**
+     * Whether built-in dictation refuses the field described by [inputType], or null if it works.
+     *
+     * Upstream hides the voice key in all of these, and in email fields too, because its key hands
+     * the field to another voice IME. Built-in dictation shows both of its keys everywhere instead,
+     * so they are always where the user expects them, and refuses here with a reason. Email fields
+     * are not refused: dictation works in them, and long form always did.
+     *
+     * - passwords: never send a password through a speech engine;
+     * - number, phone and date fields: the engine writes "five", not "5";
+     * - the app asked for no microphone (the private IME option), so honour it.
+     *
+     * TYPE_NULL is not a field to refuse -- there is no editor -- and the key stays hidden there.
+     */
+    fun refusal(inputType: Int, isPassword: Boolean, microphoneOffByApp: Boolean): Refusal? = when {
+        isPassword -> Refusal.PASSWORD
+        microphoneOffByApp -> Refusal.APP_REQUEST
+        inputType != InputType.TYPE_NULL
+                && inputType and InputType.TYPE_MASK_CLASS != InputType.TYPE_CLASS_TEXT -> Refusal.NOT_TEXT
+        else -> null
+    }
+
     /**
      * How many characters to delete from the end of the field, [seen], so that it ends with [keep]
      * again, given that our record says [stale] follows it. -1 when [keep] cannot be found within

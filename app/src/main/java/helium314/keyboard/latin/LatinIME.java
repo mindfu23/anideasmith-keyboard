@@ -175,6 +175,14 @@ public class LatinIME extends InputMethodService implements
     // whether the dictation state is currently being shown: the highlighted voice key and the
     // space bar label. Not a view — see showDictationUi for the row that used to live here.
     private boolean mVoiceInputUiShown = false;
+    // A failed dictation says why on the space bar, with the voice key tinted, rather than in a
+    // toast: Android drops toasts from a keyboard whose notifications are off, which made every
+    // failure look like the key doing nothing. Cleared by the next key, or after this long.
+    private static final long DICTATION_ERROR_MILLIS = 3000;
+    private boolean mDictationErrorShown = false;
+    private final Runnable mClearDictationError = this::clearDictationError;
+    // the mic key stopped the session, so an empty session is what the user chose, not a failure
+    private boolean mVoiceInputStoppedByUser = false;
 
     // TODO: Move these {@link View}s to {@link KeyboardSwitcher}.
     private View mInputView;
@@ -908,8 +916,16 @@ public class LatinIME extends InputMethodService implements
         // now rather than at onFinishInputView, a third of a second later: in between, the engine's
         // next partial would be written into whatever field comes next. Nothing is carried over;
         // the next field starts with no dictation and an empty record.
-        if (isDictating() && editorInfo != null && VoiceSessionPolicy.INSTANCE.leftTheField(editorInfo.inputType)) {
-            cancelVoiceInput("left the field");
+        //
+        // A native form restarts input straight into the next field with its real type, no TYPE_NULL
+        // in between, so leftTheField cannot see that move. A field dictation refuses is ended on
+        // regardless of whether it is a new one: on 2026-10-02 a username field's dictation carried on
+        // into the password field below it and wrote there.
+        final VoiceSessionPolicy.Refusal refusedHere = isDictating() ? dictationRefusal(editorInfo) : null;
+        if (isDictating() && editorInfo != null
+                && (VoiceSessionPolicy.INSTANCE.leftTheField(editorInfo.inputType) || refusedHere != null)) {
+            cancelVoiceInput(refusedHere != null ? "focus moved to a refused field (" + refusedHere + ")"
+                    : "left the field");
             mVoiceStreamed.setLength(0);
             mVoiceFrozen.setLength(0);
             mVoiceStreamedProvisional = false;
@@ -929,6 +945,8 @@ public class LatinIME extends InputMethodService implements
 
     void onStartInputViewInternal(final EditorInfo editorInfo, final boolean restarting) {
         super.onStartInputView(editorInfo, restarting);
+        // the message was about the field the user has just left
+        clearDictationError();
 
         setGestureDataGatheringMode(editorInfo, restarting);
 
@@ -1116,6 +1134,7 @@ public class LatinIME extends InputMethodService implements
         super.onFinishInputView(finishingInput);
         Log.i(TAG, "onFinishInputView");
         cancelVoiceInput("finish input view");
+        clearDictationError();
         cleanupInternalStateForFinishInput();
     }
 
@@ -1535,22 +1554,41 @@ public class LatinIME extends InputMethodService implements
         final SettingsValues settingsValues = mSettings.getCurrent();
         if (!settingsValues.mUseInlineVoiceInput) return false;
         if (mVoiceInputController != null && mVoiceInputController.isActive()) {
+            mVoiceInputStoppedByUser = true;
             mVoiceInputController.stop(); // the mic key toggles; it is the gesture users reach for
             return true;
         }
-        if (settingsValues.mInputAttributes.mIsPasswordField) {
+        final InputAttributes attributes = settingsValues.mInputAttributes;
+        final VoiceSessionPolicy.Refusal refusal = VoiceSessionPolicy.INSTANCE.refusal(
+                attributes.mInputType, attributes.mIsPasswordField, attributes.isMicrophoneOffByApp());
+        if (refusal != null) {
             // deliberately does not fall through to the old path either: handing a password field
             // to an external voice IME is exactly what we do not want to do
-            showVoiceInputToast(R.string.voice_input_not_in_password_field);
+            switch (refusal) {
+                case PASSWORD:
+                    showDictationError(R.string.voice_input_error_password,
+                            R.string.voice_input_not_in_password_field, forceLongForm);
+                    break;
+                case APP_REQUEST:
+                    showDictationError(R.string.voice_input_error_app_request,
+                            R.string.voice_input_error_app_request, forceLongForm);
+                    break;
+                case NOT_TEXT:
+                    showDictationError(R.string.voice_input_error_not_text,
+                            R.string.voice_input_error_not_text, forceLongForm);
+                    break;
+            }
             return true;
         }
         if (!PermissionsUtil.checkAllPermissionsGranted(this, Manifest.permission.RECORD_AUDIO)) {
             // an IME cannot ask for a permission, so this is as far as we can go from here
-            showVoiceInputToast(R.string.voice_input_no_permission);
+            showDictationError(R.string.voice_input_error_keyboard_permission,
+                    R.string.voice_input_no_permission, forceLongForm);
             return false;
         }
         if (!SpeechRecognizer.isRecognitionAvailable(this)) {
-            showVoiceInputToast(R.string.voice_input_not_available);
+            showDictationError(R.string.voice_input_error_no_engine,
+                    R.string.voice_input_not_available, forceLongForm);
             return false;
         }
         if (mVoiceInputController == null) {
@@ -1563,6 +1601,7 @@ public class LatinIME extends InputMethodService implements
         mInputLogic.finishInput();
         setNeutralSuggestionStrip();
         mVoiceInputGotResults = false;
+        mVoiceInputStoppedByUser = false;
         // before start: the first ping is the one startListening plays
         if (forceLongForm && !settingsValues.mVoiceInputLongFormBeeps) mNotificationSoundMute.mute();
         mVoiceInputController.start(mRichImm.getCurrentSubtypeLocale(),
@@ -1833,6 +1872,16 @@ public class LatinIME extends InputMethodService implements
      *   it belongs to the next one and is left for the partials to stream again.
      */
     private void streamVoiceText(@NonNull final String rawText, final boolean finalised) {
+        // The backstop to ending dictation on focus moving to a refused field: checked before every
+        // write, not only after a focus change, because the writes worth stopping are the ones that
+        // arrive by some other route -- text the engine had already queued, a session reopening.
+        // Cheap: the field's details are already held here, and the result is cached per field.
+        final VoiceSessionPolicy.Refusal refused = dictationRefusal(getCurrentInputEditorInfo());
+        if (refused != null) {
+            Log.w(TAG, "not writing dictated text into a refused field (" + refused + ")");
+            cancelVoiceInput("refused field at write");
+            return;
+        }
         final RichInputConnection connection = mInputLogic.mConnection;
         final String fullText = spokenPunctuation(rawText, connection);
         // Everything the user has typed behind is off limits, so only the part of the utterance
@@ -1960,6 +2009,7 @@ public class LatinIME extends InputMethodService implements
      *             the input is not a single key (a gesture, a multi-character string)
      */
     private void onUserInputDuringDictation(final String reason, final int code) {
+        clearDictationError(); // any input means the message has been seen, or is not wanted
         if (!isDictating()) return;
         if (keepsTypingDuringDictation()) {
             // dictation continues; stop correcting what the input is about to land behind
@@ -1983,6 +2033,25 @@ public class LatinIME extends InputMethodService implements
                 settingsValues.mVoiceInputShortFormKeepOnTab, settingsValues.mVoiceInputShortFormIgnoredKeys);
     }
 
+    @Nullable private EditorInfo mRefusalCheckedFor;
+    @Nullable private VoiceSessionPolicy.Refusal mRefusalForChecked;
+    private int mRefusalCheckedType;
+
+    /** Whether built-in dictation refuses this field, and why; null when it may be dictated into. */
+    @Nullable
+    private VoiceSessionPolicy.Refusal dictationRefusal(@Nullable final EditorInfo editorInfo) {
+        if (editorInfo == null) return null;
+        // keyed on the type too, in case a framework ever reuses the object for another field
+        if (editorInfo != mRefusalCheckedFor || editorInfo.inputType != mRefusalCheckedType) {
+            final InputAttributes attributes = new InputAttributes(editorInfo, isFullscreenMode(), getPackageName());
+            mRefusalForChecked = VoiceSessionPolicy.INSTANCE.refusal(attributes.mInputType,
+                    attributes.mIsPasswordField, attributes.isMicrophoneOffByApp());
+            mRefusalCheckedFor = editorInfo;
+            mRefusalCheckedType = editorInfo.inputType;
+        }
+        return mRefusalForChecked;
+    }
+
     private void cancelVoiceInput(final String reason) {
         if (mVoiceInputController != null && mVoiceInputController.isActive()) {
             Log.i(TAG, "cancelling voice input: " + reason);
@@ -1992,6 +2061,37 @@ public class LatinIME extends InputMethodService implements
 
     private void showVoiceInputToast(final int resId) {
         Toast.makeText(this, resId, Toast.LENGTH_LONG).show();
+    }
+
+    /**
+     * Say why dictation failed where the user is looking: [labelResId] on the space bar and the
+     * voice key tinted, for {@link #DICTATION_ERROR_MILLIS} or until the next key. The toast,
+     * [toastResId], is only for when no keyboard is on screen to carry the message.
+     */
+    private void showDictationError(final int labelResId, final int toastResId, final boolean longForm) {
+        final MainKeyboardView view = mKeyboardSwitcher.getMainKeyboardView();
+        if (view == null || !view.isShown()) {
+            showVoiceInputToast(toastResId);
+            return;
+        }
+        // Posted, because an engine error arrives just before the session's own teardown, which
+        // clears the space bar label and the key in the same call and would wipe this straight away.
+        mHandler.post(() -> {
+            mHandler.removeCallbacks(mClearDictationError);
+            mDictationErrorShown = true;
+            setDictationSpaceBarLabel(getString(labelResId));
+            if (hasSuggestionStripView()) mSuggestionStripView.setVoiceInputError(longForm);
+            mHandler.postDelayed(mClearDictationError, DICTATION_ERROR_MILLIS);
+        });
+    }
+
+    private void clearDictationError() {
+        mHandler.removeCallbacks(mClearDictationError);
+        if (!mDictationErrorShown) return;
+        mDictationErrorShown = false;
+        if (mVoiceInputUiShown) return; // a new session has the space bar and the key now
+        setDictationSpaceBarLabel(null);
+        if (hasSuggestionStripView()) mSuggestionStripView.setVoiceInputActive(false);
     }
 
     // Dictated text is written straight to the input connection and never through InputLogic, so
@@ -2062,16 +2162,22 @@ public class LatinIME extends InputMethodService implements
             // Only the errors that mean "this cannot work as configured" are worth interrupting
             // the user for; no match and speech timeout are ordinary and the session restarts on
             // them. But a fallback must never be a silent no-op.
+            final boolean longForm = mVoiceInputController != null && mVoiceInputController.getLongForm();
             switch (error) {
                 case SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS:
-                    showVoiceInputToast(R.string.voice_input_no_permission);
+                    // The keyboard's own grant was checked before starting, so this is the engine
+                    // being refused -- Claude's, recording in the background, on 2026-10-02.
+                    showDictationError(R.string.voice_input_error_engine_permission,
+                            R.string.voice_input_no_permission, longForm);
                     break;
                 case SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE:
                 case SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED:
-                    showVoiceInputToast(R.string.voice_input_language_unavailable);
+                    showDictationError(R.string.voice_input_error_language,
+                            R.string.voice_input_language_unavailable, longForm);
                     break;
                 case SpeechRecognizer.ERROR_CLIENT:
-                    showVoiceInputToast(R.string.voice_input_not_available);
+                    showDictationError(R.string.voice_input_error_no_engine,
+                            R.string.voice_input_not_available, longForm);
                     break;
                 case SpeechRecognizer.ERROR_NO_MATCH:
                 case SpeechRecognizer.ERROR_SPEECH_TIMEOUT:
@@ -2079,7 +2185,9 @@ public class LatinIME extends InputMethodService implements
                     // whole session produced nothing, the user just watched a microphone open,
                     // listen and do nothing. That is indistinguishable from a broken keyboard, and
                     // it is what a wedged recognition engine actually looks like.
-                    if (!mVoiceInputGotResults) showVoiceInputToast(R.string.voice_input_no_speech);
+                    if (!mVoiceInputGotResults && !mVoiceInputStoppedByUser)
+                        showDictationError(R.string.voice_input_error_no_speech,
+                                R.string.voice_input_no_speech, longForm);
                     break;
                 default:
                     break;
@@ -2091,7 +2199,9 @@ public class LatinIME extends InputMethodService implements
             if (!recovering) {
                 // the session really is over, and the keyboard going quiet with no explanation is
                 // exactly what a bug in this feature looks like from the outside
-                showVoiceInputToast(R.string.voice_input_engine_stopped);
+                showDictationError(R.string.voice_input_error_engine_stopped,
+                        R.string.voice_input_engine_stopped,
+                        mVoiceInputController != null && mVoiceInputController.getLongForm());
                 return;
             }
             Log.w(TAG, "speech engine stopped listening, rebuilding it");
@@ -2124,6 +2234,7 @@ public class LatinIME extends InputMethodService implements
      */
     private void showDictationUi() {
         if (!hasSuggestionStripView()) return;
+        clearDictationError();
         final boolean longForm = mVoiceInputController != null && mVoiceInputController.getLongForm();
         mVoiceInputUiShown = true;
         // COMMENTED OUT, not deleted: the dictation row. See VoiceInputStrip.

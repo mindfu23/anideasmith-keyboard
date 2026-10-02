@@ -321,6 +321,33 @@ class VoiceSessionPolicyTest {
         assertEquals(0, agreed("", "latest"))
     }
 
+    // --- how much to delete, read from the field --------------------------------------------
+
+    private fun inField(seen: String, keep: String, stale: String) =
+        VoiceSessionPolicy.staleInField(seen, keep, stale, stale.length + 8)
+
+    @Test fun aDroppedFirstWordIsDeletedWithTheRest() {
+        // captured 07:07:36 on the S24: " Don't put." became " Put.", so only the leading space
+        // agreed, and searching for the nearest space deleted "put." alone and left "Don't" behind
+        val seen = "big black paints in there? Don't put."
+        assertEquals(" Don't put.".length - 1, inField(seen, " ", "Don't put."))
+    }
+
+    @Test fun theRecordWinsWhenTheFieldAgreesWithIt() {
+        val seen = "earlier words. It would take period"
+        assertEquals(" period".length, inField(seen, "earlier words. It would take", " period"))
+    }
+
+    @Test fun aMarkTheAppRemovedIsStillFound() {
+        // the app took the trailing "." itself, so the record is one character long
+        val seen = "Okay, that pause happened period now"
+        assertEquals(" period now".length, inField(seen, "Okay, that pause happened", " period now."))
+    }
+
+    @Test fun textThatIsNotOursIsLeftAlone() {
+        assertEquals(-1, inField("something the user typed", "Okay, that pause", " period"))
+    }
+
     // --- the overshoot that was deleted and retyped, i.e. the repeated-text bug ----------------
 
     private fun stale(written: String, latest: String, finalised: Boolean) =

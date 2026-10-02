@@ -1724,15 +1724,7 @@ public class LatinIME extends InputMethodService implements
         if (keep.isEmpty()) return staleAtEndOfField(connection, stale);
         final CharSequence tail = connection.getTextBeforeCursor(keep.length() + limit, 0);
         if (tail == null) return -1;
-        final String seen = tail.toString();
-        // smallest first: the nearest match is the end of what we wrote, a further one would be an
-        // earlier repetition of the same words
-        for (int remove = 0; remove <= limit; remove++) {
-            final int from = seen.length() - remove - keep.length();
-            if (from < 0) break;
-            if (seen.startsWith(keep, from)) return remove;
-        }
-        return -1;
+        return VoiceSessionPolicy.INSTANCE.staleInField(tail.toString(), keep, stale, limit);
     }
 
     /**

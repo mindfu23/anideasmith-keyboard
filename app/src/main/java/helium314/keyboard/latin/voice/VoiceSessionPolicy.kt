@@ -143,6 +143,29 @@ internal object VoiceSessionPolicy {
     }
 
     /**
+     * How many characters to delete from the end of the field, [seen], so that it ends with [keep]
+     * again, given that our record says [stale] follows it. -1 when [keep] cannot be found within
+     * [limit] characters of the end.
+     *
+     * The record is tried first. Only when the field disagrees with it — the app removes a
+     * sentence-final "." of its own accord at a line end — does this search, and then smallest first,
+     * because a further match would be an earlier repetition of the same words. Searching first
+     * stops at the nearest copy of [keep], and a short one is easily found inside the very words that
+     * should go: captured 07:07:36 on the S24, the engine turned " Don't put." into " Put.", the
+     * agreed text was one space, the nearest space was the one before "put.", and "Don't" was left
+     * behind in the field.
+     */
+    fun staleInField(seen: String, keep: String, stale: String, limit: Int): Int {
+        if (seen.endsWith(keep + stale)) return stale.length
+        for (remove in 0..limit) {
+            val from = seen.length - remove - keep.length
+            if (from < 0) break
+            if (seen.startsWith(keep, from)) return remove
+        }
+        return -1
+    }
+
+    /**
      * Whether the end of a segmented session should open another one rather than end dictation.
      *
      * Long form only. The engine ends its own session after whatever silence it considers final,

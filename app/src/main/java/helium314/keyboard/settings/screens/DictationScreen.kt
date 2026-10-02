@@ -158,8 +158,13 @@ fun createDictationSettings(context: Context) = listOf(
         R.string.voice_input_auto_punctuation, R.string.voice_input_auto_punctuation_summary
     ) { setting ->
         val ctx = LocalContext.current
+        // The engine only formats when on-device recognition is asked for (Google rejects
+        // EXTRA_ENABLE_FORMATTING otherwise), so this switch would do nothing without it.
         SwitchPreference(setting, Defaults.PREF_VOICE_INPUT_AUTO_PUNCTUATION) { on ->
-            if (on) ctx.prefs().edit { putBoolean(Settings.PREF_VOICE_INPUT_SPOKEN_PUNCTUATION, false) }
+            if (on) ctx.prefs().edit {
+                putBoolean(Settings.PREF_VOICE_INPUT_SPOKEN_PUNCTUATION, false)
+                putBoolean(Settings.PREF_VOICE_INPUT_PREFER_OFFLINE, true)
+            }
         }
     },
     Setting(context, Settings.PREF_VOICE_INPUT_SPOKEN_PUNCTUATION,
@@ -175,8 +180,12 @@ fun createDictationSettings(context: Context) = listOf(
     ) { SwitchPreference(it, Defaults.PREF_VOICE_INPUT_SENTENCE_CAPS) },
     Setting(context, Settings.PREF_VOICE_INPUT_PREFER_OFFLINE,
         R.string.voice_input_prefer_offline, R.string.voice_input_prefer_offline_summary
-    ) {
-        SwitchPreference(it, Defaults.PREF_VOICE_INPUT_PREFER_OFFLINE)
+    ) { setting ->
+        val ctx = LocalContext.current
+        // the other half of the link above: off would leave automatic punctuation on but inert
+        SwitchPreference(setting, Defaults.PREF_VOICE_INPUT_PREFER_OFFLINE) { on ->
+            if (!on) ctx.prefs().edit { putBoolean(Settings.PREF_VOICE_INPUT_AUTO_PUNCTUATION, false) }
+        }
     },
     Setting(context, Settings.PREF_VOICE_INPUT_SERVICE, R.string.voice_input_service) { setting ->
         // Also addresses upstream #1547, which asks to choose the engine. An empty value means

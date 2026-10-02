@@ -1014,7 +1014,7 @@ New dictionary:
     <!-- Switch for engine-supplied punctuation and capitalisation while dictating -->
     <string name="voice_input_auto_punctuation">Automatic punctuation</string>
     <!-- Description for "voice_input_auto_punctuation" option. -->
-    <string name="voice_input_auto_punctuation_summary">Let the speech recognition service add punctuation and capitalisation</string>
+    <string name="voice_input_auto_punctuation_summary">Let the speech recognition service add punctuation and capitalisation. This also switches the keyboard to \"Prefer on-device\". Google\'s engines honour it whichever is selected; others may not</string>
     <!-- Switch for capitals coming only from punctuation and the dictionaries -->
     <string name="voice_input_sentence_caps">Capitalise only after punctuation</string>
     <!-- Description for "voice_input_sentence_caps" option. -->
@@ -1026,7 +1026,7 @@ New dictionary:
     <!-- Switch to prefer speech recognition that runs on the device -->
     <string name="voice_input_prefer_offline">Prefer on-device recognition</string>
     <!-- Description for "voice_input_prefer_offline" option. -->
-    <string name="voice_input_prefer_offline_summary">Recognise speech without a network connection, when a downloaded language is available</string>
+    <string name="voice_input_prefer_offline_summary">Recognise speech without a network connection, when a downloaded language is available. When off, speech may be sent to the engine\'s servers. Turning this off also turns off automatic punctuation</string>
     <!-- Setting to choose which installed app performs speech recognition -->
     <string name="voice_input_service">Speech recognition service</string>
     <!-- List entry leaving the choice of speech recognition service to the system -->

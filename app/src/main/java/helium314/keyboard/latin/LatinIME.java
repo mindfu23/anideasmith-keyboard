@@ -24,6 +24,7 @@ import android.os.Debug;
 import android.os.Message;
 import android.os.Process;
 import android.os.SystemClock;
+import android.util.Pair;
 import android.speech.SpeechRecognizer;
 import android.util.PrintWriterPrinter;
 import android.util.Printer;
@@ -183,6 +184,22 @@ public class LatinIME extends InputMethodService implements
     private final Runnable mClearDictationError = this::clearDictationError;
     // the mic key stopped the session, so an empty session is what the user chose, not a failure
     private boolean mVoiceInputStoppedByUser = false;
+    /**
+     * Whether this session writes each finished utterance once, with nothing streamed and nothing
+     * deleted. Switched on for the rest of a session when the field cannot be read back or no
+     * longer ends with what dictation wrote -- see {@link #enterFinalsOnly}.
+     */
+    private boolean mVoiceFinalsOnly = false;
+    /** The field the session is in, for telling a hidden keyboard's return from a move elsewhere. */
+    @Nullable private VoiceSessionPolicy.FieldIdentity mVoiceField;
+    /** Set while a long-form session waits for a hidden keyboard to come back. */
+    private boolean mVoiceHidden = false;
+    private long mVoiceHiddenAt = 0;
+    /** Engine text that arrived while the keyboard was hidden, as (text, finalised), in order. */
+    @NonNull private final ArrayList<Pair<String, Boolean>> mVoiceHeld = new ArrayList<>();
+    private final Runnable mVoiceHiddenExpiry = this::onVoiceHiddenExpiry;
+    /** Whether the current run of dictated text began at the start of a line, so wants no leading space. */
+    private boolean mVoiceAtLineStart = false;
 
     // TODO: Move these {@link View}s to {@link KeyboardSwitcher}.
     private View mInputView;
@@ -912,25 +929,7 @@ public class LatinIME extends InputMethodService implements
 
     private void onStartInputInternal(final EditorInfo editorInfo, final boolean restarting) {
         super.onStartInput(editorInfo, restarting);
-        // Focus has left the field being dictated into -- a Tab in a form, usually. End the session
-        // now rather than at onFinishInputView, a third of a second later: in between, the engine's
-        // next partial would be written into whatever field comes next. Nothing is carried over;
-        // the next field starts with no dictation and an empty record.
-        //
-        // A native form restarts input straight into the next field with its real type, no TYPE_NULL
-        // in between, so leftTheField cannot see that move. A field dictation refuses is ended on
-        // regardless of whether it is a new one: on 2026-10-02 a username field's dictation carried on
-        // into the password field below it and wrote there.
-        final VoiceSessionPolicy.Refusal refusedHere = isDictating() ? dictationRefusal(editorInfo) : null;
-        if (isDictating() && editorInfo != null
-                && (VoiceSessionPolicy.INSTANCE.leftTheField(editorInfo.inputType) || refusedHere != null)) {
-            cancelVoiceInput(refusedHere != null ? "focus moved to a refused field (" + refusedHere + ")"
-                    : "left the field");
-            mVoiceStreamed.setLength(0);
-            mVoiceFrozen.setLength(0);
-            mVoiceStreamedProvisional = false;
-            mVoiceFrozenEndDropped = false;
-        }
+        if (isDictating() && editorInfo != null) onInputRestartedDuringDictation(editorInfo);
 
         final RichInputMethodSubtype subtypeForApp = editorInfo == null
             ? null :
@@ -941,6 +940,128 @@ public class LatinIME extends InputMethodService implements
             // found a better subtype using hint locales and saved-per-app subtype, that we should switch to.
             mHandler.postSwitchLanguage(subtypeForLocales);
         }
+    }
+
+    /**
+     * Input has restarted while a session is running. Decide whether it goes on here.
+     *
+     * Focus leaving the field being dictated into -- a Tab in a form, usually -- ends the session
+     * now rather than at onFinishInputView, a third of a second later: in between, the engine's next
+     * partial would be written into whatever field comes next. Nothing is carried over; the next
+     * field starts with no dictation and an empty record.
+     *
+     * A native form restarts input straight into the next field with its real type, no TYPE_NULL in
+     * between, so leftTheField cannot see that move. A field dictation refuses is ended on regardless
+     * of whether it is a new one: on 2026-10-02 a username field's dictation carried on into the
+     * password field below it and wrote there.
+     *
+     * While the keyboard is hidden the rules are different, because the app is between states
+     * rather than the user moving: see {@link VoiceSessionPolicy#hiddenRestart}.
+     */
+    private void onInputRestartedDuringDictation(@NonNull final EditorInfo editorInfo) {
+        final VoiceSessionPolicy.Refusal refusedHere = dictationRefusal(editorInfo);
+        if (refusedHere != null) {
+            endVoiceInputHere("focus moved to a refused field (" + refusedHere + ")");
+            return;
+        }
+        final VoiceSessionPolicy.FieldIdentity field = VoiceSessionPolicy.FieldIdentity.Companion.of(editorInfo);
+        if (mVoiceHidden) {
+            switch (VoiceSessionPolicy.INSTANCE.hiddenRestart(mVoiceField, field)) {
+                case NO_EDITOR:
+                    Log.i(TAG, "no editor while the keyboard is hidden; still waiting for the field");
+                    return;
+                case SAME_FIELD:
+                    return; // the view coming back is what resumes it
+                case OTHER_FIELD:
+                    endVoiceInputHere("focus moved to another field while the keyboard was hidden");
+                    return;
+            }
+        }
+        if (VoiceSessionPolicy.INSTANCE.leftTheField(editorInfo.inputType)) {
+            endVoiceInputHere("left the field");
+            return;
+        }
+        // the session goes on here: a restart of the same field, or one this cannot tell apart
+        mVoiceField = field;
+    }
+
+    /** End the session and forget what it wrote: the field it belonged to is no longer the one in front. */
+    private void endVoiceInputHere(@NonNull final String reason) {
+        cancelVoiceInput(reason);
+        mVoiceStreamed.setLength(0);
+        mVoiceFrozen.setLength(0);
+        mVoiceStreamedProvisional = false;
+        mVoiceFrozenEndDropped = false;
+    }
+
+    /**
+     * The keyboard is going away, by one of the three routes the framework has for it.
+     *
+     * Short form ends here, as it does on anything. Long form waits {@link VoiceSessionPolicy#HIDE_GRACE_MS}
+     * first, because apps hide and re-show the keyboard on the same field in passing: Facebook did
+     * it three times in one morning on 2026-10-10, each one a touch in the conversation, each one
+     * answered with "cancelling voice input: finish input view" and a session the user had to start
+     * again. Whatever the engine sends in the meantime is held, and written once the field is back
+     * or dropped with the session -- it must not be written while the app is between fields.
+     */
+    private void onKeyboardGoneDuringDictation(@NonNull final String reason) {
+        if (!isDictating()) return;
+        if (!mVoiceInputController.getLongForm()) {
+            cancelVoiceInput(reason);
+            return;
+        }
+        if (mVoiceHidden) return; // the first hide's clock stands
+        mVoiceHidden = true;
+        mVoiceHiddenAt = SystemClock.uptimeMillis();
+        Log.i(TAG, "keyboard gone (" + reason + "): long-form dictation waits "
+                + VoiceSessionPolicy.HIDE_GRACE_MS + " ms for it to come back");
+        mHandler.postDelayed(mVoiceHiddenExpiry, VoiceSessionPolicy.HIDE_GRACE_MS);
+    }
+
+    private void onVoiceHiddenExpiry() {
+        if (!mVoiceHidden) return;
+        mVoiceHidden = false;
+        mVoiceHeld.clear();
+        cancelVoiceInput("keyboard still hidden after " + VoiceSessionPolicy.HIDE_GRACE_MS + " ms");
+    }
+
+    /**
+     * The keyboard's view is back while a session waits for it. On the same field the session
+     * carries on, with whatever the engine sent meanwhile written now, in order. Anywhere else it
+     * ends; with no editor at all it keeps waiting, since the field may still follow.
+     */
+    private void resumeVoiceInputAfterHide(@NonNull final EditorInfo editorInfo) {
+        final VoiceSessionPolicy.FieldIdentity field = VoiceSessionPolicy.FieldIdentity.Companion.of(editorInfo);
+        switch (VoiceSessionPolicy.INSTANCE.hiddenRestart(mVoiceField, field)) {
+            case NO_EDITOR:
+                return;
+            case OTHER_FIELD:
+                endVoiceInputHere("keyboard back on another field");
+                return;
+            case SAME_FIELD:
+                break;
+        }
+        mHandler.removeCallbacks(mVoiceHiddenExpiry);
+        mVoiceHidden = false;
+        Log.i(TAG, "keyboard back on the same field after " + (SystemClock.uptimeMillis() - mVoiceHiddenAt)
+                + " ms; dictation continues with " + mVoiceHeld.size() + " held payload(s)");
+        // the restart's own cursor reports are the app's, not the user moving the caret
+        mVoiceInputLastWrite = SystemClock.uptimeMillis();
+        showDictationUi();
+        final ArrayList<Pair<String, Boolean>> held = new ArrayList<>(mVoiceHeld);
+        mVoiceHeld.clear();
+        for (final Pair<String, Boolean> payload : held) streamVoiceText(payload.first, payload.second);
+    }
+
+    /**
+     * Keep the engine's text for a hidden keyboard. A partial resends the whole utterance, so it
+     * replaces the unfinalised payload before it; a final closes its utterance and stays, and the
+     * partials of the next one queue behind it.
+     */
+    private void holdVoiceText(@NonNull final String rawText, final boolean finalised) {
+        final int last = mVoiceHeld.size() - 1;
+        if (last >= 0 && !mVoiceHeld.get(last).second) mVoiceHeld.remove(last);
+        mVoiceHeld.add(new Pair<>(rawText, finalised));
     }
 
     void onStartInputViewInternal(final EditorInfo editorInfo, final boolean restarting) {
@@ -1093,6 +1214,9 @@ public class LatinIME extends InputMethodService implements
                 currentSettingsValues.mGestureFloatingPreviewTextEnabled);
 
         if (TRACE) Debug.startMethodTracing("/data/trace/latinime");
+
+        // A long-form session waiting for a hidden keyboard: the view is back, on some field
+        if (mVoiceHidden && isDictating()) resumeVoiceInputAfterHide(editorInfo);
     }
 
     @Override
@@ -1110,7 +1234,7 @@ public class LatinIME extends InputMethodService implements
     public void onWindowHidden() {
         super.onWindowHidden();
         Log.i(TAG, "onWindowHidden");
-        cancelVoiceInput("window hidden");
+        onKeyboardGoneDuringDictation("window hidden");
         final MainKeyboardView mainKeyboardView = mKeyboardSwitcher.getMainKeyboardView();
         if (mainKeyboardView != null) {
             mainKeyboardView.closing();
@@ -1121,7 +1245,7 @@ public class LatinIME extends InputMethodService implements
     void onFinishInputInternal() {
         super.onFinishInput();
         Log.i(TAG, "onFinishInput");
-        cancelVoiceInput("finish input");
+        onKeyboardGoneDuringDictation("finish input");
 
         mDictionaryFacilitator.onFinishInput();
         final MainKeyboardView mainKeyboardView = mKeyboardSwitcher.getMainKeyboardView();
@@ -1133,7 +1257,7 @@ public class LatinIME extends InputMethodService implements
     void onFinishInputViewInternal(final boolean finishingInput) {
         super.onFinishInputView(finishingInput);
         Log.i(TAG, "onFinishInputView");
-        cancelVoiceInput("finish input view");
+        onKeyboardGoneDuringDictation("finish input view");
         clearDictationError();
         cleanupInternalStateForFinishInput();
     }
@@ -1675,10 +1799,37 @@ public class LatinIME extends InputMethodService implements
      * and the mark before them is the user's sentence end.
      */
     private void freezeVoiceTextForUserInput() {
+        freezeVoiceTextForUserInput(false);
+    }
+
+    /**
+     * @param deletesBehind true when the input is a Backspace, which takes the character before the
+     *   cursor itself: the provisional mark is then ceded to it rather than removed first.
+     */
+    private void freezeVoiceTextForUserInput(final boolean deletesBehind) {
         if (!isDictating() || mVoiceStreamed.length() == 0) return;
-        final boolean dropped = dropProvisionalMark();
+        final boolean dropped = deletesBehind ? cedeProvisionalMark() : dropProvisionalMark();
         freezeVoiceText();
         mVoiceFrozenEndDropped = dropped;
+    }
+
+    /**
+     * Backspace is about to take the last character of the field. If that is the streamed text's
+     * provisional mark, it is the user's to take: the record lets go of it and nothing is deleted
+     * here. Until 2026-10-25 the mark was dropped first, as for any other key, and the Backspace
+     * then took the letter before it -- "I did it." became "I did i" -- so a full stop removed by
+     * hand cost a letter every time (reported by the user).
+     */
+    private boolean cedeProvisionalMark() {
+        if (!mVoiceStreamedProvisional
+                || !VoiceSessionPolicy.INSTANCE.endsWithProvisionalMark(mVoiceStreamed.toString())) return false;
+        final char mark = mVoiceStreamed.charAt(mVoiceStreamed.length() - 1);
+        final CharSequence before = mInputLogic.mConnection.getTextBeforeCursorFromField(1);
+        // the field does not end with the mark, so the Backspace takes something else
+        if (before == null || before.length() != 1 || before.charAt(0) != mark) return false;
+        mVoiceStreamed.setLength(mVoiceStreamed.length() - 1);
+        if (DebugFlags.DEBUG_ENABLED) Log.i(TAG, "ceded the provisional '" + mark + "' to the Backspace");
+        return true;
     }
 
     /** Remove the streamed text's provisional mark from the field, if the field still ends with it. */
@@ -1687,7 +1838,7 @@ public class LatinIME extends InputMethodService implements
                 || !VoiceSessionPolicy.INSTANCE.endsWithProvisionalMark(mVoiceStreamed.toString())) return false;
         final RichInputConnection connection = mInputLogic.mConnection;
         final char mark = mVoiceStreamed.charAt(mVoiceStreamed.length() - 1);
-        final CharSequence before = connection.getTextBeforeCursor(1, 0);
+        final CharSequence before = connection.getTextBeforeCursorFromField(1);
         // the field no longer ends with our text; deleting would take something that is not ours
         if (before == null || before.length() != 1 || before.charAt(0) != mark) return false;
         mVoiceInputLastWrite = SystemClock.uptimeMillis();
@@ -1761,9 +1912,14 @@ public class LatinIME extends InputMethodService implements
             final int limit) {
         final String keep = text.substring(0, Math.min(agreed, text.length()));
         if (keep.isEmpty()) return staleAtEndOfField(connection, stale);
-        final CharSequence tail = connection.getTextBeforeCursor(keep.length() + limit, 0);
-        if (tail == null) return -1;
-        return VoiceSessionPolicy.INSTANCE.staleInField(tail.toString(), keep, stale, limit);
+        final CharSequence tail = connection.getTextBeforeCursorFromField(keep.length() + limit);
+        if (tail == null) {
+            enterFinalsOnly("the field cannot be read");
+            return -1;
+        }
+        final int found = VoiceSessionPolicy.INSTANCE.staleInField(tail.toString(), keep, stale, limit);
+        if (found < 0) enterFinalsOnly("the field no longer ends with the dictated text");
+        return found;
     }
 
     /**
@@ -1774,9 +1930,48 @@ public class LatinIME extends InputMethodService implements
     private int staleAtEndOfField(@NonNull final RichInputConnection connection,
             @NonNull final String stale) {
         if (stale.isEmpty()) return -1;
-        final CharSequence tail = connection.getTextBeforeCursor(stale.length(), 0);
-        if (tail == null) return -1;
-        return stale.contentEquals(tail) ? stale.length() : -1;
+        final CharSequence tail = connection.getTextBeforeCursorFromField(stale.length());
+        if (tail == null) {
+            enterFinalsOnly("the field cannot be read");
+            return -1;
+        }
+        if (stale.contentEquals(tail)) return stale.length();
+        enterFinalsOnly("the field no longer ends with the dictated text");
+        return -1;
+    }
+
+    /**
+     * Stop streaming into this field for the rest of the session: from here each finished utterance
+     * is written once, and nothing is deleted, so nothing can be duplicated.
+     *
+     * Every duplicate so far was made the same way. A partial replaces the tail of the last one by
+     * deleting it, and the delete is refused when the field does not end with what was written, so
+     * the old tail stays and the new one lands after it: " There's another." then " There." reads
+     * " There's another. There." Refusing is right -- text nobody dictated is not ours to remove --
+     * but a field that refuses once will refuse again, and the only write that cannot duplicate is
+     * one that never deletes. Live streaming is lost in that field only; the space bar says so.
+     *
+     * Reached by a field that cannot be read at all (no connection, or an app that answers null:
+     * terminals, games) and by one that no longer ends with the dictated text. In the Obsidian logs
+     * of 2026-09-29 and 2026-10-10, 1,400 writes, the second never happened, so a document editor
+     * does not get here; the messaging apps that duplicated are where it is expected to.
+     */
+    private void enterFinalsOnly(@NonNull final String why) {
+        if (mVoiceFinalsOnly) return;
+        mVoiceFinalsOnly = true;
+        Log.w(TAG, "finals only for the rest of this session: " + why);
+        if (mVoiceInputUiShown) setDictationSpaceBarLabel(dictationLabel());
+    }
+
+    /** What the space bar says while a session runs. */
+    @NonNull
+    private String dictationLabel() {
+        final boolean longForm = mVoiceInputController != null && mVoiceInputController.getLongForm();
+        if (mVoiceFinalsOnly) {
+            return getString(longForm ? R.string.voice_input_listening_long_form_by_phrase
+                    : R.string.voice_input_listening_by_phrase);
+        }
+        return getString(longForm ? R.string.voice_input_listening_long_form : R.string.voice_input_listening);
     }
 
     private boolean containsStructural(@NonNull final String text) {
@@ -1831,7 +2026,7 @@ public class LatinIME extends InputMethodService implements
         if (!spoken && !sentenceCaps) return substituted;
         if (mVoiceStreamed.length() == 0 && mVoiceFrozen.length() == 0) {
             mVoiceAfterSentenceEnd = SpokenPunctuation.INSTANCE.endsSentence(
-                    connection.getTextBeforeCursor(SENTENCE_LOOKBACK, 0));
+                    connection.getTextBeforeCursorFromField(SENTENCE_LOOKBACK));
         }
         // The dictionary is only consulted when the user has asked for capitals to come from
         // punctuation and nothing else. Without it the pass still fixes the start of an utterance,
@@ -1882,6 +2077,15 @@ public class LatinIME extends InputMethodService implements
             cancelVoiceInput("refused field at write");
             return;
         }
+        // the app is between fields; this is written when the keyboard is back, or not at all
+        if (mVoiceHidden) {
+            holdVoiceText(rawText, finalised);
+            return;
+        }
+        // A field on finals only shows nothing of an utterance until it is finished. The one
+        // exception is the utterance that was mid-stream when the switch happened: its words are on
+        // screen and its final still has to settle them.
+        if (mVoiceFinalsOnly && !finalised && mVoiceStreamed.length() == 0) return;
         final RichInputConnection connection = mInputLogic.mConnection;
         final String fullText = spokenPunctuation(rawText, connection);
         // Everything the user has typed behind is off limits, so only the part of the utterance
@@ -1893,12 +2097,25 @@ public class LatinIME extends InputMethodService implements
         // after a dropped provisional mark, a mark here would land after the user's keystroke
         if (mVoiceFrozenEndDropped && cover.getAgrees() && cover.getFrozenUsed() == frozenBefore.length())
             text = VoiceSessionPolicy.INSTANCE.dropLeadingMarks(text);
+        // At the start of a line -- after a pressed Return or Tab, a spoken "new line" or "indent",
+        // or at the top of an empty field -- the space the engine puts in front of a segment would
+        // indent the line by one character (reported by the user, 2026-10-25). Decided once per run,
+        // while nothing of it is on screen, and held for the run: a final gains a leading space its
+        // partials lacked, so judging each payload by itself would put the space back on the final.
+        if (mVoiceStreamed.length() == 0) {
+            mVoiceAtLineStart = VoiceSessionPolicy.INSTANCE.noSpaceWanted(
+                    connection.getTextBeforeCursorFromField(1));
+        }
+        if (mVoiceAtLineStart && text.startsWith(" ")) text = text.substring(1);
         final String onScreen = mVoiceStreamed.toString();
         int agreed = VoiceSessionPolicy.INSTANCE.agreedPrefixLength(onScreen, text);
         // Not onScreen.length() - agreed: on a final, what lies past the engine's text is the next
         // utterance the partials have already streamed, not something to take back. See
         // VoiceSessionPolicy.staleLength.
-        int stale = VoiceSessionPolicy.INSTANCE.staleLength(onScreen, text, finalised);
+        // On finals only, a final takes back everything past agreement, the overshoot included: the
+        // next utterance's partials are not going to extend those words, so its final writes them
+        // again, once, and they must not be there twice.
+        int stale = VoiceSessionPolicy.INSTANCE.staleLength(onScreen, text, finalised && !mVoiceFinalsOnly);
         // Deleting is the one thing here that could eat text we did not write, so it only happens
         // when the field still ends with exactly what we put there. A stray keystroke or a cursor
         // move makes that false; then nothing is removed and this becomes a plain append.
@@ -1953,7 +2170,7 @@ public class LatinIME extends InputMethodService implements
         // the next one. They stay on screen and stay tracked, so the partials that follow extend
         // them instead of writing them a second time. Reachable because staleLength leaves them
         // alone; when something really was revised, stale covers them and there is nothing to keep.
-        final String overshoot = stale == 0 && onScreen.length() > text.length()
+        final String overshoot = !mVoiceFinalsOnly && stale == 0 && onScreen.length() > text.length()
                 ? onScreen.substring(text.length()) : "";
         mVoiceStreamed.setLength(0);
         mVoiceStreamed.append(overshoot);
@@ -1979,7 +2196,7 @@ public class LatinIME extends InputMethodService implements
                     + dictationText("carry", carry));
         }
         if (DebugFlags.DEBUG_ENABLED && mSettings.getCurrent().mVoiceInputLogText) {
-            final CharSequence actual = connection.getTextBeforeCursor(140, 0);
+            final CharSequence actual = connection.getTextBeforeCursorFromField(140);
             Log.i(TAG, "field now ends" + dictationText("actual", actual == null ? "<null>" : actual.toString()));
         }
     }
@@ -2013,9 +2230,9 @@ public class LatinIME extends InputMethodService implements
         if (!isDictating()) return;
         if (keepsTypingDuringDictation()) {
             // dictation continues; stop correcting what the input is about to land behind
-            freezeVoiceTextForUserInput();
+            freezeVoiceTextForUserInput(code == KeyCode.DELETE);
         } else if (shortFormIgnoresKey(code)) {
-            freezeVoiceTextForUserInput();
+            freezeVoiceTextForUserInput(code == KeyCode.DELETE);
             // The key moves the cursor itself -- an indent, a space, an arrow -- and that move has
             // to read as expected, or onUpdateSelection ends the session the key was meant to spare.
             mVoiceInputLastWrite = SystemClock.uptimeMillis();
@@ -2105,6 +2322,11 @@ public class LatinIME extends InputMethodService implements
             mVoiceFrozen.setLength(0);
             mVoiceStreamedProvisional = false;
             mVoiceFrozenEndDropped = false;
+            // a fresh session gets a fresh chance at streaming, whatever the last one found
+            mVoiceFinalsOnly = false;
+            mVoiceAtLineStart = false;
+            final EditorInfo editorInfo = getCurrentInputEditorInfo();
+            mVoiceField = editorInfo == null ? null : VoiceSessionPolicy.FieldIdentity.Companion.of(editorInfo);
             showDictationUi();
         }
 
@@ -2218,6 +2440,10 @@ public class LatinIME extends InputMethodService implements
         @Override
         public void onVoiceInputStopped() {
             Log.i(TAG, "voice input stopped");
+            mHandler.removeCallbacks(mVoiceHiddenExpiry);
+            mVoiceHidden = false;
+            mVoiceHeld.clear();
+            mVoiceField = null;
             mNotificationSoundMute.restore();
             hideDictationUi();
         }
@@ -2244,8 +2470,7 @@ public class LatinIME extends InputMethodService implements
         // });
         // mSuggestionStripView.setExternalSuggestionView(mVoiceInputStrip.getRoot(), false);
         mSuggestionStripView.setVoiceInputActive(true, longForm);
-        setDictationSpaceBarLabel(getString(longForm
-                ? R.string.voice_input_listening_long_form : R.string.voice_input_listening));
+        setDictationSpaceBarLabel(dictationLabel());
         // The toolbar is expanded, since the mic key lives there, and an expanded toolbar hides the
         // pinned keys — including the voice key showing the session and offering the way out of it.
         //

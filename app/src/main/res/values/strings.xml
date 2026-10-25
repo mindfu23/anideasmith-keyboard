@@ -1007,6 +1007,9 @@ New dictionary:
     <string name="voice_input_listening_long_form">Dictation</string>
     <!-- Shown on the space bar while a stalled recognition engine is being rebuilt -->
     <string name="voice_input_reconnecting">Reconnecting…</string>
+    <!-- Space bar labels once a field has switched to writing each finished phrase at once, with no live streaming -->
+    <string name="voice_input_listening_by_phrase">Listening, by phrase</string>
+    <string name="voice_input_listening_long_form_by_phrase">Dictation, by phrase</string>
     <!-- Shown when the recognition engine stopped responding and could not be revived -->
     <string name="voice_input_engine_stopped">Dictation stopped: the speech engine stopped responding</string>
     <!-- Short dictation errors shown on the space bar for a few seconds, so keep them short -->

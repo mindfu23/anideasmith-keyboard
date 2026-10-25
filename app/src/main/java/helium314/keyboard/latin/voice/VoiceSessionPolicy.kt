@@ -4,6 +4,7 @@ package helium314.keyboard.latin.voice
 import android.os.Build
 import android.speech.SpeechRecognizer
 import android.text.InputType
+import android.view.inputmethod.EditorInfo
 import helium314.keyboard.keyboard.internal.keyboard_parser.floris.KeyCode
 import helium314.keyboard.latin.common.Constants
 
@@ -371,6 +372,18 @@ internal object VoiceSessionPolicy {
     /** Only punctuation that ends or divides a clause: an apostrophe resumes a word ("other" + "'s"). */
     private const val SENTENCE_MARKS = ".?!,;:"
 
+    /**
+     * Whether text written now wants no space in front of it, given [before], the character before
+     * the cursor as the field reports it (null when it cannot be read).
+     *
+     * The engine separates segments with a leading space, which is right after a word or a mark
+     * and wrong after a line break, a tab or a space -- there it indents the new line by one
+     * character -- and at the very start of a field. Unreadable means "leave it alone": a stray
+     * space is cheaper than words run together.
+     */
+    fun noSpaceWanted(before: CharSequence?): Boolean =
+        before != null && (before.isEmpty() || before[before.length - 1].isWhitespace())
+
     /** A cursor move we caused is not a reason to stop; one the user made is. */
     fun cursorMoveEndsDictation(msSinceOwnWrite: Long) = msSinceOwnWrite >= WRITE_SETTLE_MS
 
@@ -432,4 +445,65 @@ internal object VoiceSessionPolicy {
      * dictation that day — and those arrive with a real input type, so they do not end anything.
      */
     fun leftTheField(inputType: Int) = inputType and InputType.TYPE_MASK_CLASS == InputType.TYPE_NULL
+
+    /**
+     * How long a long-form session waits for a hidden keyboard to come back before it ends.
+     *
+     * Apps hide and re-show the keyboard on the same field in passing. Measured in Facebook on
+     * 2026-10-10, from the saved log: on every hide the app finishes input, restarts it on the same
+     * composer within 15 ms, and about 275 ms after that swaps in an editor with no input type.
+     * When the user had only tapped something in the conversation, the composer was back with the
+     * keyboard 1.2 s after the hide; when they had gone somewhere else, 5 to 9 s. The window has to
+     * clear the first and must not reach the second. Short form does not wait: it ends on anything.
+     */
+    const val HIDE_GRACE_MS = 1500L
+
+    /**
+     * What tells one field from another once the keyboard comes back after a hide.
+     *
+     * The [EditorInfo] is a new object on every restart, so only what it says can be compared: the
+     * app, the field's id, its type and options, and its hint. An app that gives two fields the
+     * same of all of these cannot be told apart here -- the same limit the password-field rule
+     * already lives with -- and dictation would carry on into the second one.
+     */
+    data class FieldIdentity(
+        val packageName: String?,
+        val fieldId: Int,
+        val inputType: Int,
+        val imeOptions: Int,
+        val privateImeOptions: String?,
+        val hint: String?
+    ) {
+        companion object {
+            fun of(editorInfo: EditorInfo) = FieldIdentity(
+                editorInfo.packageName, editorInfo.fieldId, editorInfo.inputType, editorInfo.imeOptions,
+                editorInfo.privateImeOptions, editorInfo.hintText?.toString()
+            )
+        }
+    }
+
+    /** What a restart of input means to a long-form session waiting for a hidden keyboard. */
+    enum class HiddenRestart {
+        /** The field dictation was in. The view coming back on it resumes the session. */
+        SAME_FIELD,
+        /** No editor at all. Apps pass through this while shuffling focus; keep waiting. */
+        NO_EDITOR,
+        /** Somewhere else. Dictating there would put text where nobody is looking: end now. */
+        OTHER_FIELD
+    }
+
+    /**
+     * Classify a restart that arrives while the keyboard is hidden and [dictated] is the field the
+     * session was in.
+     *
+     * The no-editor case is the one that differs from [leftTheField]. With the keyboard still up,
+     * a restart with no input type is a Tab out of a web-form field, and ending at once is what
+     * keeps the next words out of the next field. With the keyboard down there is no next field
+     * being looked at; the app is between states, and the grace window decides.
+     */
+    fun hiddenRestart(dictated: FieldIdentity?, now: FieldIdentity): HiddenRestart = when {
+        leftTheField(now.inputType) -> HiddenRestart.NO_EDITOR
+        dictated == now -> HiddenRestart.SAME_FIELD
+        else -> HiddenRestart.OTHER_FIELD
+    }
 }

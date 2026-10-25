@@ -469,6 +469,33 @@ public final class RichInputConnection implements PrivateCommandPerformer {
                 n, flags);
     }
 
+    /**
+     * The text before the cursor as the app holds it now, never from the cache.
+     *
+     * {@link #getTextBeforeCursor} answers from the cache whenever the cache looks complete, which
+     * is right for suggestions and wrong for checking what the app has done with text the keyboard
+     * wrote. Two ways the cache misleads there, both met while dictating: Facebook's composer
+     * reports the cursor at 0 on every reconnect, so an empty cache looks complete and answers ""
+     * without asking; and an app that edits of its own accord -- Obsidian removing a full stop at a
+     * line end -- leaves the cache full but wrong.
+     *
+     * Returns null when there is no connection or the app will not say (terminals, games, some
+     * custom editors). That is "cannot be checked", not "empty", and the caller has to treat it so.
+     * The cache is left alone either way: reloading it from a field that reports its cursor wrongly
+     * would only replace one wrong cache with another. Laggy-connection detection still applies.
+     */
+    @Nullable public CharSequence getTextBeforeCursorFromField(final int n) {
+        mIC = mParent.getCurrentInputConnection();
+        if (!isConnected()) {
+            return null;
+        }
+        final long startTime = SystemClock.uptimeMillis();
+        final CharSequence result = mIC.getTextBeforeCursor(n, 0);
+        detectLaggyConnection(OPERATION_GET_TEXT_BEFORE_CURSOR,
+                SLOW_INPUT_CONNECTION_ON_PARTIAL_RELOAD_MS, startTime);
+        return result;
+    }
+
     @Nullable private CharSequence getTextBeforeCursorAndDetectLaggyConnection(
             final int operation, final long timeout, final int n, final int flags) {
         mIC = mParent.getCurrentInputConnection();

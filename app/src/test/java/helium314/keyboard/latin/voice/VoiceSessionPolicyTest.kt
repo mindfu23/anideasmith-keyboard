@@ -495,6 +495,74 @@ class VoiceSessionPolicyTest {
         assertFalse(VoiceSessionPolicy.leftTheField(InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE))
     }
 
+    // The space in front of a segment, reported as a one-character indent on 2026-10-25.
+
+    @Test fun noSpaceAtTheStartOfALineOrOfTheField() {
+        assertTrue(VoiceSessionPolicy.noSpaceWanted("\n"))   // a pressed Return or a spoken "new line"
+        assertTrue(VoiceSessionPolicy.noSpaceWanted("\t"))   // a spoken "indent"
+        assertTrue(VoiceSessionPolicy.noSpaceWanted(" "))    // a typed space
+        assertTrue(VoiceSessionPolicy.noSpaceWanted(""))     // an empty field
+    }
+
+    @Test fun aSpaceIsWantedAfterAWordOrAMark() {
+        assertFalse(VoiceSessionPolicy.noSpaceWanted("d"))
+        assertFalse(VoiceSessionPolicy.noSpaceWanted("."))
+        // unreadable: a stray space is the cheaper mistake
+        assertFalse(VoiceSessionPolicy.noSpaceWanted(null))
+    }
+
+    // A hidden keyboard during long form, from the Facebook sequence of 2026-10-10.
+
+    private val composer = VoiceSessionPolicy.FieldIdentity(
+        "com.facebook.orca", 0x7f0a0123, 0x00024001, 0x50000006, null, "Message")
+
+    @Test fun theSameComposerComingBackIsTheSameField() {
+        // the app finishes input and restarts it on the same composer 15 ms after every hide
+        assertEquals(VoiceSessionPolicy.HiddenRestart.SAME_FIELD,
+            VoiceSessionPolicy.hiddenRestart(composer, composer.copy()))
+    }
+
+    @Test fun noEditorWhileHiddenIsNotYetLeaving() {
+        // 275 ms after the restart the app swaps in an editor with no type, and 1.2 s later the
+        // composer was back with the keyboard -- the user had only tapped something
+        val none = VoiceSessionPolicy.FieldIdentity("com.facebook.orca", 0, InputType.TYPE_NULL, 0, null, null)
+        assertEquals(VoiceSessionPolicy.HiddenRestart.NO_EDITOR, VoiceSessionPolicy.hiddenRestart(composer, none))
+        // with the keyboard still up the same restart is a Tab out of a web-form field, and ends it
+        assertTrue(VoiceSessionPolicy.leftTheField(none.inputType))
+    }
+
+    @Test fun anotherFieldWhileHiddenEndsIt() {
+        assertEquals(VoiceSessionPolicy.HiddenRestart.OTHER_FIELD,
+            VoiceSessionPolicy.hiddenRestart(composer, composer.copy(fieldId = 0x7f0a0124)))
+        assertEquals(VoiceSessionPolicy.HiddenRestart.OTHER_FIELD,
+            VoiceSessionPolicy.hiddenRestart(composer, composer.copy(hint = "Search")))
+        assertEquals(VoiceSessionPolicy.HiddenRestart.OTHER_FIELD,
+            VoiceSessionPolicy.hiddenRestart(composer, composer.copy(packageName = "md.obsidian")))
+        // a session that never learned its field cannot vouch for any
+        assertEquals(VoiceSessionPolicy.HiddenRestart.OTHER_FIELD, VoiceSessionPolicy.hiddenRestart(null, composer))
+    }
+
+    @Test fun theGraceClearsATapInTheConversationButNotLeavingIt() {
+        // measured: composer back after 1.2 s when the user tapped something, 5 to 9 s when they left
+        assertTrue(VoiceSessionPolicy.HIDE_GRACE_MS > 1200)
+        assertTrue(VoiceSessionPolicy.HIDE_GRACE_MS < 5000)
+    }
+
+    @Test fun aFieldIdentityIsReadFromTheEditorInfo() {
+        val info = android.view.inputmethod.EditorInfo().apply {
+            packageName = "com.facebook.orca"; fieldId = 7; inputType = 0x00024001
+            imeOptions = 0x50000006; hintText = "Message"
+        }
+        assertEquals(VoiceSessionPolicy.FieldIdentity("com.facebook.orca", 7, 0x00024001, 0x50000006, null, "Message"),
+            VoiceSessionPolicy.FieldIdentity.of(info))
+        // a new EditorInfo for the same field compares equal, which object identity never would
+        assertEquals(VoiceSessionPolicy.FieldIdentity.of(info), VoiceSessionPolicy.FieldIdentity.of(
+            android.view.inputmethod.EditorInfo().apply {
+                packageName = "com.facebook.orca"; fieldId = 7; inputType = 0x00024001
+                imeOptions = 0x50000006; hintText = "Message"
+            }))
+    }
+
     // Frozen text against the engine's, with payloads captured in Obsidian on 2026-09-29.
 
     private fun resumed(frozen: String, engine: String) =

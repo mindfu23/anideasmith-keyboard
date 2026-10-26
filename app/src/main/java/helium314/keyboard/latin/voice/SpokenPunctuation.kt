@@ -59,9 +59,11 @@ internal object SpokenPunctuation {
         // were spoken and the ordinary streaming puts them there. What they are not is harmless:
         // the app answers a newline with a bullet and an indent of its own, behind text this class
         // is still tracking, so LatinIME freezes the run after writing one exactly as it does for a
-        // pressed key. Nothing follows them on the same line, hence no trailing space.
-        Mark(listOf("new", "line"), "\n", spaceBefore = false, spaceAfter = false),
-        Mark(listOf("newline"), "\n", spaceBefore = false, spaceAfter = false),
+        // pressed key. Nothing follows them on the same line, hence no trailing space. A line break
+        // keeps the space in front of it, though: the user wants the space that ends a sentence at
+        // the end of the line rather than at the start of the next (2026-10-26), "done. \nnext".
+        Mark(listOf("new", "line"), "\n", spaceBefore = true, spaceAfter = false),
+        Mark(listOf("newline"), "\n", spaceBefore = true, spaceAfter = false),
         Mark(listOf("indent"), "\t", spaceBefore = false, spaceAfter = false),
         // Outdent has no character to be. It is dropped from the text here and carried out as a
         // shift-Tab by the caller, which is the only way to ask an editor to unindent.

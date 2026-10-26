@@ -64,7 +64,7 @@ class SpokenPunctuationTest {
         // The same happens to any multi-word command.
         assertEquals("really?", apply("really question-mark"))
         assertEquals("wow!", apply("wow Exclamation-Point"))
-        assertEquals("done.\nnext", apply("done period new-line next"))
+        assertEquals("done. \nnext", apply("done period new-line next"))
     }
 
     @Test fun hyphenatedOrdinaryWordsAreNotTakenApart() {
@@ -94,7 +94,7 @@ class SpokenPunctuationTest {
         assertEquals(",", apply(" Comma"))
         assertEquals(".", apply(" Period"))
         // captured verbatim from a session, when "new line" was still arriving as two words
-        assertEquals(".\n", apply(" Period New line"))
+        assertEquals(". \n", apply(" Period New line"))
     }
 
     @Test fun anOpeningQuoteOnItsOwnKeepsTheSpace() {
@@ -128,14 +128,21 @@ class SpokenPunctuationTest {
     // --- the structural ones --------------------------------------------------------------------
 
     @Test fun aSpokenLineBreakIsALineBreak() {
-        assertEquals("done.\nnext", apply("done period new line next"))
-        assertEquals("done.\nnext", apply("done period newline next"))
+        assertEquals("done. \nnext", apply("done period new line next"))
+        assertEquals("done. \nnext", apply("done period newline next"))
     }
 
     @Test fun nothingIsSpacedAcrossALineBreak() {
         // a leading space on the new line would indent it by one character for no reason
         assertEquals("\nhere", apply("new line here"))
         assertEquals("\t", apply(" indent"))
+    }
+
+    @Test fun theSpaceBetweenSentencesEndsTheLineInsteadOfStartingTheNext() {
+        // 2026-10-26: "here. \nOkay", not "here.\n Okay" -- a segment of its own keeps its leading
+        // space, which then lands after the last sentence and before the break
+        assertEquals(" \nhere", apply(" new line here"))
+        assertEquals(" \n", apply(" New line"))
     }
 
     @Test fun anIndentIsATab() {
@@ -211,7 +218,7 @@ class SpokenPunctuationTest {
         val spoken = "In this prose I am saying the phrase open quote literal word new line close quote " +
                 "in order to add a literal word new line after this sentence colon new line and then continue"
         assertEquals("In this prose I am saying the phrase \"new line\" " +
-                "in order to add a new line after this sentence:\nand then continue", apply(spoken))
+                "in order to add a new line after this sentence: \nand then continue", apply(spoken))
     }
 
     // --- what survives with automatic punctuation on ------------------------------------------
@@ -352,7 +359,7 @@ class SpokenPunctuationTest {
         // a heading, a list item or a line broken mid-thought all read as beginnings, and none of
         // them carries a full stop
         assertEquals("one\nTwo", SpokenPunctuation.capitalise("one\ntwo", false))
-        assertEquals("done.\nNext", SpokenPunctuation.capitalise(apply("done period new line next"), false))
+        assertEquals("done. \nNext", SpokenPunctuation.capitalise(apply("done period new line next"), false))
     }
 
     @Test fun aNewLineBehindTheTextStartsOneToo() {
@@ -367,7 +374,7 @@ class SpokenPunctuationTest {
         val spoken = "In this prose I am saying the phrase open quote literal word new line close quote " +
                 "in order to add a literal word new line after this sentence colon new line and then continue"
         assertEquals("In this prose I am saying the phrase \"new line\" " +
-                "in order to add a new line after this sentence:\nAnd then continue",
+                "in order to add a new line after this sentence: \nAnd then continue",
             SpokenPunctuation.capitalise(apply(spoken), true))
     }
 

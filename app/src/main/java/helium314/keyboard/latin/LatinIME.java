@@ -31,6 +31,7 @@ import android.util.Printer;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.Window;
+import android.view.WindowManager;
 import android.view.inputmethod.CompletionInfo;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InlineSuggestion;
@@ -86,6 +87,7 @@ import helium314.keyboard.latin.utils.FloatingKeyboardUtils;
 import helium314.keyboard.latin.utils.FoldableUtils;
 import helium314.keyboard.latin.utils.GestureDataGatheringKt;
 import helium314.keyboard.latin.utils.GestureDataGatheringSettings;
+import helium314.keyboard.latin.utils.InputTypeUtils;
 import helium314.keyboard.latin.utils.InlineAutofillUtils;
 import helium314.keyboard.latin.utils.InputMethodPickerKt;
 import helium314.keyboard.latin.utils.JniUtils;
@@ -198,7 +200,7 @@ public class LatinIME extends InputMethodService implements
     /** Engine text that arrived while the keyboard was hidden, as (text, finalised), in order. */
     @NonNull private final ArrayList<Pair<String, Boolean>> mVoiceHeld = new ArrayList<>();
     private final Runnable mVoiceHiddenExpiry = this::onVoiceHiddenExpiry;
-    /** Whether the current run of dictated text began at the start of a line, so wants no leading space. */
+    /** Whether the current utterance began at the start of a line, so wants no leading space. */
     private boolean mVoiceAtLineStart = false;
 
     // TODO: Move these {@link View}s to {@link KeyboardSwitcher}.
@@ -1791,9 +1793,8 @@ public class LatinIME extends InputMethodService implements
      * Every partial ends in "." (or "?"), which the next partial replaces if the sentence goes on.
      * Freezing mid-sentence used to keep it, and the words that followed landed after it and the
      * user's keystroke: "calcul.ations", "this can. be measured.", "each other.s methods" -- all
-     * from one session on 2026-09-29. The user chose this over keeping the mark, knowing the cost:
-     * Return pressed in the second before the engine confirms a sentence loses its full stop. See
-     * NOTES.md, "option B".
+     * from one session on 2026-09-29. The user chose this over keeping the mark (NOTES.md, "option
+     * B"), except for a Return: since 2026-10-26 a line break keeps it, see the int overload.
      *
      * Only for user input. A spoken "new line" or "outdent" freezes too, but those are dictation,
      * and the mark before them is the user's sentence end.
@@ -2099,9 +2100,12 @@ public class LatinIME extends InputMethodService implements
             text = VoiceSessionPolicy.INSTANCE.dropLeadingMarks(text);
         // At the start of a line -- after a pressed Return or Tab, a spoken "new line" or "indent",
         // or at the top of an empty field -- the space the engine puts in front of a segment would
-        // indent the line by one character (reported by the user, 2026-10-25). Decided once per run,
-        // while nothing of it is on screen, and held for the run: a final gains a leading space its
-        // partials lacked, so judging each payload by itself would put the space back on the final.
+        // indent the line by one character (reported by the user, 2026-10-25). The space goes before
+        // the line break instead; see spaceBeforeLineBreak. Decided once per utterance, while nothing
+        // of it is on screen, and held until its final: a final gains a leading space its partials
+        // lacked, so judging each payload by itself would put the space back on the final. Not held
+        // past it -- until 2026-10-26 it was, and the overshoot kept the run going, so every sentence
+        // after a line start lost its space: "talking.Long form".
         if (mVoiceStreamed.length() == 0) {
             mVoiceAtLineStart = VoiceSessionPolicy.INSTANCE.noSpaceWanted(
                     connection.getTextBeforeCursorFromField(1));
@@ -2176,6 +2180,11 @@ public class LatinIME extends InputMethodService implements
         mVoiceStreamed.append(overshoot);
         // the overshoot is partial text, so its last mark is still the engine's guess
         mVoiceStreamedProvisional = !overshoot.isEmpty();
+        // The next utterance follows this one's words, so it is not at a line start -- unless this
+        // final added no words: everything was behind a freeze, and the overshoot begins where this
+        // utterance would have, at the line start already decided. Seen 2026-10-26 after a Return:
+        // clearing it there put the space back on " Okay, we've done that".
+        if (!text.isEmpty()) mVoiceAtLineStart = false;
         // Unindenting is a key event, not a character, so it cannot be streamed into place with the
         // words and happens here instead -- once, for a finalised utterance. Partials repeat the
         // whole utterance, so acting on those would walk the text left across the screen.
@@ -2230,9 +2239,9 @@ public class LatinIME extends InputMethodService implements
         if (!isDictating()) return;
         if (keepsTypingDuringDictation()) {
             // dictation continues; stop correcting what the input is about to land behind
-            freezeVoiceTextForUserInput(code == KeyCode.DELETE);
+            freezeVoiceTextForUserInput(code);
         } else if (shortFormIgnoresKey(code)) {
-            freezeVoiceTextForUserInput(code == KeyCode.DELETE);
+            freezeVoiceTextForUserInput(code);
             // The key moves the cursor itself -- an indent, a space, an arrow -- and that move has
             // to read as expected, or onUpdateSelection ends the session the key was meant to spare.
             mVoiceInputLastWrite = SystemClock.uptimeMillis();
@@ -2240,6 +2249,45 @@ public class LatinIME extends InputMethodService implements
         } else {
             cancelVoiceInput(reason);
         }
+    }
+
+    /**
+     * Freeze for a key that dictation carries on through. A line break keeps the engine's
+     * provisional mark, since a Return is where a sentence ends: dropping it, as every other key
+     * does, cost the line its full stop (the user's call, 2026-10-26, reversing option B for Return
+     * only). Then the separating space goes in ahead of the break.
+     */
+    private void freezeVoiceTextForUserInput(final int code) {
+        if (!insertsLineBreak(code)) {
+            freezeVoiceTextForUserInput(code == KeyCode.DELETE);
+            return;
+        }
+        freezeVoiceText();
+        spaceBeforeLineBreak();
+    }
+
+    /** Whether the key makes a line break, rather than sending or searching with an Enter. */
+    private boolean insertsLineBreak(final int code) {
+        return code == KeyCode.SHIFT_ENTER || (code == Constants.CODE_ENTER
+                && InputTypeUtils.getImeOptionsActionIdFromEditorInfo(getCurrentInputEditorInfo())
+                        == EditorInfo.IME_ACTION_NONE);
+    }
+
+    /**
+     * A Return pressed while dictation carries on: put the space that separates sentences at the end
+     * of the line it closes, since the next segment's leading space is dropped at the start of the
+     * new one. The user's choice, 2026-10-26: "here. \nOkay" rather than "here.\n Okay". A spoken
+     * "new line" gets the same from SpokenPunctuation.
+     *
+     * Only for a Return that makes a line break -- one that sends or searches would carry the space
+     * off with the message -- and only after something that is not already whitespace.
+     */
+    private void spaceBeforeLineBreak() {
+        final RichInputConnection connection = mInputLogic.mConnection;
+        final CharSequence before = connection.getTextBeforeCursorFromField(1);
+        if (before == null || before.length() == 0 || Character.isWhitespace(before.charAt(0))) return;
+        mVoiceInputLastWrite = SystemClock.uptimeMillis();
+        connection.commitText(" ", 1);
     }
 
     /** Whether the user has let the plain microphone key's dictation carry on through this key. */
@@ -2327,6 +2375,7 @@ public class LatinIME extends InputMethodService implements
             mVoiceAtLineStart = false;
             final EditorInfo editorInfo = getCurrentInputEditorInfo();
             mVoiceField = editorInfo == null ? null : VoiceSessionPolicy.FieldIdentity.Companion.of(editorInfo);
+            keepScreenOn(true);
             showDictationUi();
         }
 
@@ -2445,9 +2494,26 @@ public class LatinIME extends InputMethodService implements
             mVoiceHeld.clear();
             mVoiceField = null;
             mNotificationSoundMute.restore();
+            keepScreenOn(false);
             hideDictationUi();
         }
     };
+
+    /**
+     * Hold the screen on while a session runs. Speech is not a touch, so the screen timeout counts
+     * down through dictation, and when it fires the lock screen takes the keyboard away and the
+     * hidden-keyboard grace ends the session (reported 2026-10-26, confirmed against the phone's
+     * screen_toggled events: off by timeout under a second after each "keyboard gone").
+     *
+     * A window flag rather than a wake lock: it lapses by itself whenever the keyboard is not on
+     * screen, needs no permission, and a deliberate press of the power button still ends things.
+     */
+    private void keepScreenOn(final boolean on) {
+        final Window window = getWindow().getWindow();
+        if (window == null) return;
+        if (on) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+    }
 
     /**
      * Show that a session is running: the pinned voice key takes the highlight, and the space bar

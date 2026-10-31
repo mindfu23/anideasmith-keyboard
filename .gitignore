@@ -15,3 +15,6 @@ tools/*.txt
 *.patch
 *.diff
 *.sh
+
+# Local-only notes
+NOTES.md
